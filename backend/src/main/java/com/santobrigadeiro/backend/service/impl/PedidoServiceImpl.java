@@ -2,6 +2,9 @@ package com.santobrigadeiro.backend.service.impl;
 
 import com.santobrigadeiro.backend.dto.ItemPedidoRequestDTO;
 import com.santobrigadeiro.backend.dto.PedidoRequestDTO;
+import com.santobrigadeiro.backend.dto.ResumoProducaoSemanalDTO;
+import com.santobrigadeiro.backend.dto.TotalPorDiaSaborDTO;
+import com.santobrigadeiro.backend.dto.TotalPorSaborDTO;
 import com.santobrigadeiro.backend.entity.*;
 import com.santobrigadeiro.backend.entity.enums.StatusPedido;
 import com.santobrigadeiro.backend.event.PedidoEntregueEvent;
@@ -16,7 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 @Service
 @RequiredArgsConstructor
@@ -125,5 +133,70 @@ public class PedidoServiceImpl implements PedidoService {
             throw new RegraDeNegocioException("A data de início não pode ser posterior à data de fim.");
         }
         return pedidoRepository.buscarPorPeriodoComItens(dataInicio, dataFim);
+    }
+
+    /**
+     * Consolidado de produção pendente: uma única consulta (com JOIN FETCH)
+     * e agregação em memória — volume de uma doceria não justifica GROUP BY
+     * em três queries separadas, e assim os três recortes (geral, por sabor,
+     * por dia+sabor) saem garantidamente consistentes entre si, pois nascem
+     * da mesma fotografia dos dados.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public ResumoProducaoSemanalDTO consultarResumoProducao(LocalDate dataInicio, LocalDate dataFim) {
+        if (dataInicio.isAfter(dataFim)) {
+            throw new RegraDeNegocioException("A data de início não pode ser posterior à data de fim.");
+        }
+
+        List<Pedido> pedidos = pedidoRepository
+                .buscarPendentesPorPeriodoComItens(dataInicio, dataFim, StatusPedido.ENTREGUE);
+
+        // Agrupamento sempre pelo ID do sabor (Long), nunca pela referência
+        // do objeto JPA — mesma decisão do PlanejamentoProducaoServiceImpl.
+        Map<Long, Sabor> saborPorId = new HashMap<>();
+        Map<Long, Integer> totalPorSaborId = new HashMap<>();
+        // TreeMap: os dias já saem em ordem cronológica.
+        Map<LocalDate, Map<Long, Integer>> quantidadePorDiaESabor = new TreeMap<>();
+        int totalGeral = 0;
+
+        for (Pedido pedido : pedidos) {
+            for (ItemPedido item : pedido.getItens()) {
+                Long saborId = item.getSabor().getId();
+                int quantidade = item.getTipoLote().getQuantidade();
+
+                saborPorId.putIfAbsent(saborId, item.getSabor());
+                totalPorSaborId.merge(saborId, quantidade, Integer::sum);
+                quantidadePorDiaESabor
+                        .computeIfAbsent(pedido.getDataEntrega(), d -> new HashMap<>())
+                        .merge(saborId, quantidade, Integer::sum);
+                totalGeral += quantidade;
+            }
+        }
+
+        // Do maior para o menor volume: o sabor que mais dá trabalho aparece
+        // primeiro nos badges da Central de Produção.
+        List<TotalPorSaborDTO> totaisPorSabor = totalPorSaborId.entrySet().stream()
+                .map(entrada -> {
+                    Sabor sabor = saborPorId.get(entrada.getKey());
+                    return new TotalPorSaborDTO(sabor.getNome(), entrada.getValue(), sabor.isPodeCongelar());
+                })
+                .sorted(Comparator.comparingInt(TotalPorSaborDTO::getQuantidadeTotal).reversed()
+                        .thenComparing(TotalPorSaborDTO::getSaborNome))
+                .toList();
+
+        List<TotalPorDiaSaborDTO> totaisPorDiaESabor = new ArrayList<>();
+        for (Map.Entry<LocalDate, Map<Long, Integer>> entradaDia : quantidadePorDiaESabor.entrySet()) {
+            entradaDia.getValue().entrySet().stream()
+                    .map(entradaSabor -> new TotalPorDiaSaborDTO(
+                            entradaDia.getKey(),
+                            saborPorId.get(entradaSabor.getKey()).getNome(),
+                            entradaSabor.getValue()))
+                    .sorted(Comparator.comparingInt(TotalPorDiaSaborDTO::getQuantidade).reversed()
+                            .thenComparing(TotalPorDiaSaborDTO::getSaborNome))
+                    .forEach(totaisPorDiaESabor::add);
+        }
+
+        return new ResumoProducaoSemanalDTO(dataInicio, dataFim, totalGeral, totaisPorSabor, totaisPorDiaESabor);
     }
 }

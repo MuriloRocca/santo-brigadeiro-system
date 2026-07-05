@@ -3,6 +3,7 @@ package com.santobrigadeiro.backend.controller;
 import com.santobrigadeiro.backend.dto.AtualizacaoStatusPedidoDTO;
 import com.santobrigadeiro.backend.dto.PedidoRequestDTO;
 import com.santobrigadeiro.backend.dto.PedidoResponseDTO;
+import com.santobrigadeiro.backend.dto.ResumoProducaoSemanalDTO;
 import com.santobrigadeiro.backend.entity.Pedido;
 import com.santobrigadeiro.backend.service.PedidoService;
 import jakarta.validation.Valid;
@@ -30,8 +31,8 @@ public class PedidoController {
 
     @GetMapping("/semana")
     public ResponseEntity<List<PedidoResponseDTO>> listarPedidosDaSemana(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim) {
+            @RequestParam("dataInicio") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataInicio,
+            @RequestParam("dataFim") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dataFim) {
 
         List<PedidoResponseDTO> pedidos = pedidoService.buscarPedidosDaSemana(dataInicio, dataFim)
                 .stream()
@@ -39,6 +40,15 @@ public class PedidoController {
                 .toList();
 
         return ResponseEntity.ok(pedidos);
+    }
+
+    // Consolidado de produção pendente (exclui ENTREGUES): alimenta a
+    // Central de Produção do painel semanal e a futura tela de congelamento.
+    @GetMapping("/resumo-producao")
+    public ResponseEntity<ResumoProducaoSemanalDTO> resumoProducao(
+            @RequestParam("inicio") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate inicio,
+            @RequestParam("fim") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fim) {
+        return ResponseEntity.ok(pedidoService.consultarResumoProducao(inicio, fim));
     }
 
     // PATCH: transição de status. Ao virar ENTREGUE, o caixa recebe a
