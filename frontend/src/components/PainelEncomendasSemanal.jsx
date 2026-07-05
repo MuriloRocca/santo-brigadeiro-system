@@ -80,6 +80,13 @@ function formatarDataCurta(dataISO) {
   return `${dia}/${mes}`;
 }
 
+const NOMES_DIAS = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+
+function nomeDoDiaDaSemana(dataISO) {
+  const [ano, mes, dia] = dataISO.split("-").map(Number);
+  return NOMES_DIAS[new Date(ano, mes - 1, dia).getDay()];
+}
+
 /**
  * ============================================================
  * ADAPTADOR: formato bruto da API -> formato que o componente usa
@@ -198,7 +205,8 @@ export default function PainelEncomendasSemanal() {
   const [carregando, setCarregando] = useState(true);
   const [usandoMock, setUsandoMock] = useState(false);
   const [resumoAberto, setResumoAberto] = useState(true);
-  const [salvandoSabor, setSalvandoSabor] = useState(null);
+  // Chave da ação em andamento: "adiantar-<sabor>|<data>" ou "desfazer-<itemId>".
+  const [salvandoChave, setSalvandoChave] = useState(null);
   const [mensagemAcao, setMensagemAcao] = useState(null); // { tipo: "sucesso" | "erro", texto }
   // Incrementado após uma ação para recarregar a verdade do servidor.
   const [versaoDados, setVersaoDados] = useState(0);
@@ -258,28 +266,30 @@ export default function PainelEncomendasSemanal() {
     setSegundaISO(novaSegundaISO);
   }
 
-  async function marcarComoAdiantado(grupo) {
-    setSalvandoSabor(grupo.saborNome);
+  // Núcleo compartilhado entre "adiantar" e "desfazer": mesmo endpoint,
+  // mesma simulação em modo exemplo, mesma ressincronização pós-falha.
+  async function alterarStatusProducao({ chave, itemIds, novoStatus, textoSucesso, textoErro }) {
+    setSalvandoChave(chave);
     setMensagemAcao(null);
     try {
       if (usandoMock) {
-        // Modo exemplo: simula o congelamento localmente para o fluxo de
-        // demonstração continuar clicável mesmo sem backend.
+        // Modo exemplo: simula localmente para o fluxo de demonstração
+        // continuar clicável mesmo sem backend.
         const atualizados = pedidos.map((pedido) => ({
           ...pedido,
           itens: pedido.itens.map((item) =>
-            grupo.itemIds.includes(item.id) ? { ...item, statusProducao: "CONGELADO" } : item
+            itemIds.includes(item.id) ? { ...item, statusProducao: novoStatus } : item
           ),
         }));
         setPedidos(atualizados);
         setResumo(calcularResumoLocal(atualizados));
       } else {
         const respostas = await Promise.all(
-          grupo.itemIds.map((itemId) =>
+          itemIds.map((itemId) =>
             fetch(`/api/pedidos/itens/${itemId}/status-producao`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ statusProducao: "CONGELADO" }),
+              body: JSON.stringify({ statusProducao: novoStatus }),
             })
           )
         );
@@ -288,22 +298,36 @@ export default function PainelEncomendasSemanal() {
         }
         setVersaoDados((versao) => versao + 1); // recarrega a verdade do servidor
       }
-      setMensagemAcao({
-        tipo: "sucesso",
-        texto: `${grupo.quantidade} doces de ${grupo.saborNome} marcados como adiantados. ❄ A Central de Produção já foi atualizada.`,
-      });
+      setMensagemAcao({ tipo: "sucesso", texto: textoSucesso });
     } catch (erroCapturado) {
-      console.warn("Falha ao marcar adiantamento:", erroCapturado.message);
-      setMensagemAcao({
-        tipo: "erro",
-        texto: `Não foi possível adiantar ${grupo.saborNome}. Tente novamente.`,
-      });
+      console.warn("Falha ao atualizar status de produção:", erroCapturado.message);
+      setMensagemAcao({ tipo: "erro", texto: textoErro });
       // Ressincroniza com o servidor: uma falha parcial não pode deixar
       // a tela contando doces que já foram congelados (ou vice-versa).
       setVersaoDados((versao) => versao + 1);
     } finally {
-      setSalvandoSabor(null);
+      setSalvandoChave(null);
     }
+  }
+
+  function marcarComoAdiantado(grupo) {
+    return alterarStatusProducao({
+      chave: grupo.chave,
+      itemIds: grupo.itemIds,
+      novoStatus: "CONGELADO",
+      textoSucesso: `${grupo.quantidade} doces de ${grupo.saborNome} (${grupo.diaLabel}) marcados como adiantados. ❄ A Central de Produção já foi atualizada.`,
+      textoErro: `Não foi possível adiantar ${grupo.saborNome}. Tente novamente.`,
+    });
+  }
+
+  function desfazerAdiantamento(item) {
+    return alterarStatusProducao({
+      chave: `desfazer-${item.id}`,
+      itemIds: [item.id],
+      novoStatus: "PENDENTE",
+      textoSucesso: `${item.quantidade} doces de ${item.saborNome} voltaram para a produção pendente.`,
+      textoErro: `Não foi possível desfazer o adiantamento de ${item.saborNome}. Tente novamente.`,
+    });
   }
 
   if (carregando && pedidos === null) {
@@ -386,7 +410,7 @@ export default function PainelEncomendasSemanal() {
 
       <SugestoesAdiantamento
         pedidos={pedidos ?? []}
-        salvandoSabor={salvandoSabor}
+        salvandoChave={salvandoChave}
         aoMarcar={marcarComoAdiantado}
       />
 
@@ -413,7 +437,12 @@ export default function PainelEncomendasSemanal() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {pedidosDoDia.map((pedido) => (
-                    <CardPedido key={pedido.id} pedido={pedido} />
+                    <CardPedido
+                      key={pedido.id}
+                      pedido={pedido}
+                      salvandoChave={salvandoChave}
+                      aoDesfazer={desfazerAdiantamento}
+                    />
                   ))}
                 </div>
               )}
@@ -576,17 +605,22 @@ function CentralDeProducao({ resumo, aberto, aoAlternar, datasDaSemana }) {
  * SUGESTÕES DE ADIANTAMENTO (CONGELAMENTO)
  * ============================================================
  * Agrupa os lotes PENDENTES de sabores congeláveis (de pedidos ainda
- * não entregues) e oferece a ação de um clique só. A seção some
- * sozinha quando não há mais nada que possa ser adiantado.
+ * não entregues) por SABOR + DIA DE ENTREGA: cada card é uma decisão
+ * específica ("adianto o Tradicional da sexta?"), escolhida com um
+ * clique. A seção some sozinha quando não há mais nada a adiantar.
  */
-function SugestoesAdiantamento({ pedidos, salvandoSabor, aoMarcar }) {
-  const porSabor = new Map();
+function SugestoesAdiantamento({ pedidos, salvandoChave, aoMarcar }) {
+  const porSaborEDia = new Map();
   for (const pedido of pedidos) {
     if (pedido.status === "ENTREGUE") continue;
     for (const item of pedido.itens) {
       if (!item.podeCongelar || item.statusProducao !== "PENDENTE") continue;
-      const grupo = porSabor.get(item.saborNome) ?? {
+      const chave = `adiantar-${item.saborNome}|${pedido.dataEntrega}`;
+      const grupo = porSaborEDia.get(chave) ?? {
+        chave,
         saborNome: item.saborNome,
+        dataEntrega: pedido.dataEntrega,
+        diaLabel: `${nomeDoDiaDaSemana(pedido.dataEntrega)} (${formatarDataCurta(pedido.dataEntrega)})`,
         quantidade: 0,
         lotes: 0,
         itemIds: [],
@@ -594,10 +628,14 @@ function SugestoesAdiantamento({ pedidos, salvandoSabor, aoMarcar }) {
       grupo.quantidade += item.quantidade;
       grupo.lotes += 1;
       grupo.itemIds.push(item.id);
-      porSabor.set(item.saborNome, grupo);
+      porSaborEDia.set(chave, grupo);
     }
   }
-  const grupos = [...porSabor.values()].sort((a, b) => b.quantidade - a.quantidade);
+  // Ordem cronológica primeiro (decisão mais urgente no topo) e, dentro
+  // do mesmo dia, o maior volume antes.
+  const grupos = [...porSaborEDia.values()].sort(
+    (a, b) => a.dataEntrega.localeCompare(b.dataEntrega) || b.quantidade - a.quantidade
+  );
 
   if (grupos.length === 0) return null;
 
@@ -607,13 +645,13 @@ function SugestoesAdiantamento({ pedidos, salvandoSabor, aoMarcar }) {
         Sugestões de Adiantamento <span aria-hidden="true">❄</span>
       </h2>
       <p className="mb-4 font-['Inter'] text-sm text-[#6B5A50]">
-        Estes sabores congelam bem — produza antes e alivie os dias de pico.
+        Estes sabores congelam bem — escolha qual dia quer adiantar e alivie os picos.
       </p>
 
       <div className="flex flex-col gap-3">
         {grupos.map((grupo) => (
           <article
-            key={grupo.saborNome}
+            key={grupo.chave}
             className="flex flex-wrap items-center justify-between gap-3 rounded-xl border-l-4 border-l-[#2F6690] bg-white p-4 shadow-sm"
           >
             <div className="flex items-center gap-3">
@@ -624,23 +662,26 @@ function SugestoesAdiantamento({ pedidos, salvandoSabor, aoMarcar }) {
                 ❄
               </span>
               <p className="font-['Inter'] text-sm text-[#3E2723]">
-                Você tem{" "}
-                <strong className="font-['Baloo_2'] text-lg">{grupo.quantidade} doces</strong> de{" "}
-                <strong>{grupo.saborNome}</strong>{" "}
+                <strong>{grupo.saborNome}</strong> —{" "}
+                <strong className="font-['Baloo_2'] text-lg">{grupo.quantidade} un.</strong> para{" "}
+                <strong>{grupo.diaLabel}</strong>{" "}
                 <span className="text-[#9C8B7F]">
                   ({grupo.lotes} {grupo.lotes === 1 ? "lote" : "lotes"})
-                </span>{" "}
-                que podem ser adiantados para aliviar o fim de semana!
+                </span>
+                <br />
+                <span className="text-[#6B5A50]">
+                  podem ser adiantados para aliviar esse dia!
+                </span>
               </p>
             </div>
 
             <button
               type="button"
               onClick={() => aoMarcar(grupo)}
-              disabled={salvandoSabor !== null}
+              disabled={salvandoChave !== null}
               className="rounded-full bg-[#2F6690] px-5 py-2.5 font-['Inter'] text-sm font-semibold text-white transition-colors hover:bg-[#1F4D6E] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {salvandoSabor === grupo.saborNome ? "Salvando…" : "❄ Marcar como adiantado"}
+              {salvandoChave === grupo.chave ? "Salvando…" : "❄ Marcar como adiantado"}
             </button>
           </article>
         ))}
@@ -676,7 +717,7 @@ function BadgeSabor({ sabor, cor }) {
  * CARD DE PEDIDO
  * ============================================================
  */
-function CardPedido({ pedido }) {
+function CardPedido({ pedido, salvandoChave, aoDesfazer }) {
   const statusConfig = STATUS_CONFIG[pedido.status];
 
   return (
@@ -711,9 +752,19 @@ function CardPedido({ pedido }) {
             <span>
               {item.saborNome}
               {item.statusProducao === "CONGELADO" && (
-                <span className="ml-1.5 rounded-full bg-[#DCEBF5] px-1.5 py-0.5 text-xs font-semibold text-[#1F4D6E]">
-                  ❄ adiantado
-                </span>
+                <>
+                  <span className="ml-1.5 rounded-full bg-[#DCEBF5] px-1.5 py-0.5 text-xs font-semibold text-[#1F4D6E]">
+                    ❄ adiantado
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => aoDesfazer(item)}
+                    disabled={salvandoChave !== null}
+                    className="ml-1.5 font-['Inter'] text-xs font-semibold text-[#9C8B7F] underline decoration-dotted underline-offset-2 transition-colors hover:text-[#8A2C2C] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {salvandoChave === `desfazer-${item.id}` ? "desfazendo…" : "desfazer"}
+                  </button>
+                </>
               )}
             </span>
             <span className="font-semibold">{item.quantidade} un.</span>
