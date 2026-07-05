@@ -38,12 +38,12 @@ public class SaborController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<SaborResponseDTO> atualizar(@PathVariable Long id, @Valid @RequestBody SaborRequestDTO dto) {
+    public ResponseEntity<SaborResponseDTO> atualizar(@PathVariable("id") Long id, @Valid @RequestBody SaborRequestDTO dto) {
         return ResponseEntity.ok(SaborResponseDTO.fromEntity(saborService.atualizar(id, dto)));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> inativar(@PathVariable Long id) {
+    public ResponseEntity<Void> excluir(@PathVariable("id") Long id) {
         saborService.inativar(id);
         return ResponseEntity.noContent().build();
     }

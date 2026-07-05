@@ -45,7 +45,7 @@ public class PedidoController {
     // receita automaticamente (via evento de domínio, no serviço).
     @PatchMapping("/{id}/status")
     public ResponseEntity<PedidoResponseDTO> atualizarStatus(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @Valid @RequestBody AtualizacaoStatusPedidoDTO dto) {
         Pedido pedido = pedidoService.atualizarStatus(id, dto.getStatus());
         return ResponseEntity.ok(PedidoResponseDTO.fromEntity(pedido));
