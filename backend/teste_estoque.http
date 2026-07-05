@@ -18,7 +18,7 @@ Content-Type: application/json
 
 {
   "clienteId": 1,
-  "dataEntrega": "2026-07-10",
+  "dataEntrega": "2026-07-08",
   "horarioEntrega": "14:00",
   "forminhaInsumoId": 1,
   "itens": [
