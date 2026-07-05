@@ -1,0 +1,40 @@
+# =====================================================================
+# .gitignore — Santo Brigadeiro (raiz do projeto)
+# Blindagem contra o versionamento de artefatos de build e segredos.
+# O frontend mantém regras adicionais em frontend/.gitignore.
+# =====================================================================
+
+# --- Java / Maven (backend) ---
+backend/target/
+target/
+build/
+*.class
+*.jar
+*.war
+*.ear
+# Exceção: o wrapper do Maven, se existir, DEVE ser versionado.
+!.mvn/wrapper/maven-wrapper.jar
+
+# --- Logs ---
+*.log
+logs/
+
+# --- IDE / Editores ---
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+
+# --- Sistema Operacional ---
+.DS_Store
+Thumbs.db
+
+# --- Segredos / variáveis de ambiente ---
+# O .env real (com senhas) NÃO deve ir para o Git; versione um .env.example.
+.env
+.env.local
