@@ -1,5 +1,6 @@
 package com.santobrigadeiro.backend.entity;
 
+import com.santobrigadeiro.backend.entity.enums.StatusProducaoItem;
 import com.santobrigadeiro.backend.validation.QuantidadeLotePermitida;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
@@ -41,4 +42,11 @@ public class ItemPedido {
     @PositiveOrZero
     @Column(name = "preco_unitario", nullable = false, precision = 10, scale = 2)
     private BigDecimal precoUnitario = BigDecimal.ZERO;
+
+    // Estado de fabricação DESTE lote (adiantamento/congelamento é por
+    // item, não por pedido — cada sabor tem sua própria regra de frio).
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status_producao", nullable = false, length = 20)
+    private StatusProducaoItem statusProducao = StatusProducaoItem.PENDENTE;
 }

@@ -7,6 +7,7 @@ import com.santobrigadeiro.backend.dto.TotalPorDiaSaborDTO;
 import com.santobrigadeiro.backend.dto.TotalPorSaborDTO;
 import com.santobrigadeiro.backend.entity.*;
 import com.santobrigadeiro.backend.entity.enums.StatusPedido;
+import com.santobrigadeiro.backend.entity.enums.StatusProducaoItem;
 import com.santobrigadeiro.backend.event.PedidoEntregueEvent;
 import com.santobrigadeiro.backend.exception.RecursoNaoEncontradoException;
 import com.santobrigadeiro.backend.exception.RegraDeNegocioException;
@@ -35,6 +36,7 @@ public class PedidoServiceImpl implements PedidoService {
     private final SaborRepository saborRepository;
     private final TipoLoteRepository tipoLoteRepository;
     private final InsumoRepository insumoRepository;
+    private final ItemPedidoRepository itemPedidoRepository;
     // Publica eventos de domínio SEM conhecer quem os consome (desacoplamento).
     private final ApplicationEventPublisher eventPublisher;
 
@@ -162,6 +164,12 @@ public class PedidoServiceImpl implements PedidoService {
 
         for (Pedido pedido : pedidos) {
             for (ItemPedido item : pedido.getItens()) {
+                // Lote já congelado/adiantado saiu da lista de esforço:
+                // a Central mostra apenas o que ainda exige produção.
+                if (item.getStatusProducao() == StatusProducaoItem.CONGELADO) {
+                    continue;
+                }
+
                 Long saborId = item.getSabor().getId();
                 int quantidade = item.getTipoLote().getQuantidade();
 
@@ -198,5 +206,30 @@ public class PedidoServiceImpl implements PedidoService {
         }
 
         return new ResumoProducaoSemanalDTO(dataInicio, dataFim, totalGeral, totaisPorSabor, totaisPorDiaESabor);
+    }
+
+    @Override
+    @Transactional
+    public ItemPedido atualizarStatusProducaoItem(Long itemId, StatusProducaoItem novoStatus) {
+        ItemPedido item = itemPedidoRepository.findById(itemId)
+                .orElseThrow(() -> new RecursoNaoEncontradoException(
+                        "Item de pedido não encontrado: id " + itemId));
+
+        if (item.getPedido().getStatus() == StatusPedido.ENTREGUE) {
+            throw new RegraDeNegocioException(
+                    "O pedido deste item já foi entregue; o status de produção não pode mais ser alterado.");
+        }
+
+        // A regra central do adiantamento: congelar só é permitido para
+        // sabores que suportam congelamento — é o que protege a qualidade
+        // do produto de um clique errado na tela.
+        if (novoStatus == StatusProducaoItem.CONGELADO && !item.getSabor().isPodeCongelar()) {
+            throw new RegraDeNegocioException(
+                    "O sabor '" + item.getSabor().getNome() + "' não pode ser congelado. "
+                            + "Este lote precisa ser produzido na data da entrega.");
+        }
+
+        item.setStatusProducao(novoStatus);
+        return itemPedidoRepository.save(item);
     }
 }

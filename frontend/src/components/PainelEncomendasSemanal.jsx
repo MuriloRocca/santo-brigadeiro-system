@@ -86,14 +86,16 @@ function formatarDataCurta(dataISO) {
  * ============================================================
  * A API devolve o PedidoResponseDTO ACHATADO:
  * { id, cliente, dataEntrega, horarioEntrega, status, corForminha,
- *   valorTotal, itens: [{ sabor, quantidade, precoUnitario, subtotal }] }
- * (O adaptador antigo esperava o grafo JPA aninhado e quebraria com a
- * resposta real — corrigido junto com a Central de Produção.)
+ *   valorTotal, itens: [{ id, sabor, quantidade, precoUnitario,
+ *   subtotal, podeCongelar, statusProducao }] }
  */
 function mapearPedido(pedidoBruto) {
   const itens = pedidoBruto.itens.map((item) => ({
+    id: item.id,
     saborNome: item.sabor,
     quantidade: item.quantidade,
+    podeCongelar: item.podeCongelar ?? false,
+    statusProducao: item.statusProducao ?? "PENDENTE",
   }));
 
   const quantidadeTotal = itens.reduce((soma, item) => soma + item.quantidade, 0);
@@ -127,23 +129,30 @@ const SABOR_CONGELAVEL_MOCK = {
 };
 
 const PEDIDOS_MOCK_BASE = [
-  { id: 100234, offsetDias: 0, horarioEntrega: "14:30:00", status: "PENDENTE", cliente: "Maria Souza", corForminha: "Forminha Rosa", itens: [{ sabor: "Tradicional", quantidade: 50 }, { sabor: "Belga", quantidade: 100 }] },
-  { id: 100235, offsetDias: 0, horarioEntrega: "09:00:00", status: "EM_PRODUCAO", cliente: "João Ferreira", corForminha: "Forminha Dourada", itens: [{ sabor: "Tradicional", quantidade: 25 }] },
-  { id: 100236, offsetDias: 2, horarioEntrega: "16:00:00", status: "PENDENTE", cliente: "Ana Beatriz", corForminha: "Forminha Branca", itens: [{ sabor: "Ninho com Nutella", quantidade: 100 }, { sabor: "Tradicional", quantidade: 50 }] },
-  { id: 100237, offsetDias: 5, horarioEntrega: "11:00:00", status: "ENTREGUE", cliente: "Carlos Mendes", corForminha: "Forminha Rosa", itens: [{ sabor: "Belga", quantidade: 25 }] },
+  { id: 100234, offsetDias: 0, horarioEntrega: "14:30:00", status: "PENDENTE", cliente: "Maria Souza", corForminha: "Forminha Rosa", itens: [{ id: 300111, sabor: "Tradicional", quantidade: 50 }, { id: 300112, sabor: "Belga", quantidade: 100 }] },
+  { id: 100235, offsetDias: 0, horarioEntrega: "09:00:00", status: "EM_PRODUCAO", cliente: "João Ferreira", corForminha: "Forminha Dourada", itens: [{ id: 300113, sabor: "Tradicional", quantidade: 25 }] },
+  { id: 100236, offsetDias: 2, horarioEntrega: "16:00:00", status: "PENDENTE", cliente: "Ana Beatriz", corForminha: "Forminha Branca", itens: [{ id: 300114, sabor: "Ninho com Nutella", quantidade: 100 }, { id: 300115, sabor: "Tradicional", quantidade: 50 }] },
+  { id: 100237, offsetDias: 5, horarioEntrega: "11:00:00", status: "ENTREGUE", cliente: "Carlos Mendes", corForminha: "Forminha Rosa", itens: [{ id: 300116, sabor: "Belga", quantidade: 25 }] },
 ];
 
 function gerarPedidosMock(segundaISO) {
   return PEDIDOS_MOCK_BASE.map(({ offsetDias, ...pedido }) => ({
     ...pedido,
     dataEntrega: adicionarDias(segundaISO, offsetDias),
+    itens: pedido.itens.map((item) => ({
+      ...item,
+      podeCongelar: SABOR_CONGELAVEL_MOCK[item.sabor] ?? false,
+      statusProducao: "PENDENTE",
+    })),
   }));
 }
 
-// Espelha a regra do backend: pedido ENTREGUE não conta como produção
-// pendente (repare que o pedido de exemplo do Carlos fica de fora).
-function gerarResumoMock(pedidosBrutos) {
-  const pendentes = pedidosBrutos.filter((pedido) => pedido.status !== "ENTREGUE");
+// Espelha a regra do backend, aplicada localmente sobre os pedidos já
+// mapeados: pedido ENTREGUE não conta e lote CONGELADO saiu da lista
+// de esforço. Serve tanto para o modo de exemplo quanto para simular
+// o clique de adiantamento quando o backend está fora.
+function calcularResumoLocal(pedidosMapeados) {
+  const pendentes = pedidosMapeados.filter((pedido) => pedido.status !== "ENTREGUE");
 
   const porSabor = new Map();
   const porDiaESabor = new Map();
@@ -151,18 +160,21 @@ function gerarResumoMock(pedidosBrutos) {
 
   for (const pedido of pendentes) {
     for (const item of pedido.itens) {
+      if (item.statusProducao === "CONGELADO") continue;
       totalGeralDoces += item.quantidade;
-      porSabor.set(item.sabor, (porSabor.get(item.sabor) ?? 0) + item.quantidade);
-      const chave = `${pedido.dataEntrega}|${item.sabor}`;
+      const acumulado = porSabor.get(item.saborNome) ?? { quantidade: 0, podeCongelar: item.podeCongelar };
+      acumulado.quantidade += item.quantidade;
+      porSabor.set(item.saborNome, acumulado);
+      const chave = `${pedido.dataEntrega}|${item.saborNome}`;
       porDiaESabor.set(chave, (porDiaESabor.get(chave) ?? 0) + item.quantidade);
     }
   }
 
   const totaisPorSabor = [...porSabor.entries()]
-    .map(([saborNome, quantidadeTotal]) => ({
+    .map(([saborNome, info]) => ({
       saborNome,
-      quantidadeTotal,
-      podeCongelar: SABOR_CONGELAVEL_MOCK[saborNome] ?? false,
+      quantidadeTotal: info.quantidade,
+      podeCongelar: info.podeCongelar,
     }))
     .sort((a, b) => b.quantidadeTotal - a.quantidadeTotal);
 
@@ -186,6 +198,10 @@ export default function PainelEncomendasSemanal() {
   const [carregando, setCarregando] = useState(true);
   const [usandoMock, setUsandoMock] = useState(false);
   const [resumoAberto, setResumoAberto] = useState(true);
+  const [salvandoSabor, setSalvandoSabor] = useState(null);
+  const [mensagemAcao, setMensagemAcao] = useState(null); // { tipo: "sucesso" | "erro", texto }
+  // Incrementado após uma ação para recarregar a verdade do servidor.
+  const [versaoDados, setVersaoDados] = useState(0);
 
   const domingoISO = adicionarDias(segundaISO, 6);
   const datasDaSemana = DIAS_DA_SEMANA.map((_, indice) => adicionarDias(segundaISO, indice));
@@ -220,9 +236,9 @@ export default function PainelEncomendasSemanal() {
       } catch (erroCapturado) {
         if (!ativo) return;
         console.warn("Backend indisponível, usando dados de exemplo:", erroCapturado.message);
-        const pedidosMock = gerarPedidosMock(segundaISO);
-        setPedidos(pedidosMock.map(mapearPedido));
-        setResumo(gerarResumoMock(pedidosMock));
+        const pedidosMock = gerarPedidosMock(segundaISO).map(mapearPedido);
+        setPedidos(pedidosMock);
+        setResumo(calcularResumoLocal(pedidosMock));
         setUsandoMock(true);
       } finally {
         if (ativo) setCarregando(false);
@@ -233,7 +249,62 @@ export default function PainelEncomendasSemanal() {
     return () => {
       ativo = false;
     };
-  }, [segundaISO]);
+  }, [segundaISO, versaoDados]);
+
+  // Mensagens de ação valem apenas para a semana em exibição — por isso
+  // a navegação de semana passa por aqui, que limpa o aviso anterior.
+  function mudarSemana(novaSegundaISO) {
+    setMensagemAcao(null);
+    setSegundaISO(novaSegundaISO);
+  }
+
+  async function marcarComoAdiantado(grupo) {
+    setSalvandoSabor(grupo.saborNome);
+    setMensagemAcao(null);
+    try {
+      if (usandoMock) {
+        // Modo exemplo: simula o congelamento localmente para o fluxo de
+        // demonstração continuar clicável mesmo sem backend.
+        const atualizados = pedidos.map((pedido) => ({
+          ...pedido,
+          itens: pedido.itens.map((item) =>
+            grupo.itemIds.includes(item.id) ? { ...item, statusProducao: "CONGELADO" } : item
+          ),
+        }));
+        setPedidos(atualizados);
+        setResumo(calcularResumoLocal(atualizados));
+      } else {
+        const respostas = await Promise.all(
+          grupo.itemIds.map((itemId) =>
+            fetch(`/api/pedidos/itens/${itemId}/status-producao`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ statusProducao: "CONGELADO" }),
+            })
+          )
+        );
+        if (respostas.some((resposta) => !resposta.ok)) {
+          throw new Error("uma das atualizações falhou");
+        }
+        setVersaoDados((versao) => versao + 1); // recarrega a verdade do servidor
+      }
+      setMensagemAcao({
+        tipo: "sucesso",
+        texto: `${grupo.quantidade} doces de ${grupo.saborNome} marcados como adiantados. ❄ A Central de Produção já foi atualizada.`,
+      });
+    } catch (erroCapturado) {
+      console.warn("Falha ao marcar adiantamento:", erroCapturado.message);
+      setMensagemAcao({
+        tipo: "erro",
+        texto: `Não foi possível adiantar ${grupo.saborNome}. Tente novamente.`,
+      });
+      // Ressincroniza com o servidor: uma falha parcial não pode deixar
+      // a tela contando doces que já foram congelados (ou vice-versa).
+      setVersaoDados((versao) => versao + 1);
+    } finally {
+      setSalvandoSabor(null);
+    }
+  }
 
   if (carregando && pedidos === null) {
     return (
@@ -258,7 +329,7 @@ export default function PainelEncomendasSemanal() {
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => setSegundaISO(adicionarDias(segundaISO, -7))}
+          onClick={() => mudarSemana(adicionarDias(segundaISO, -7))}
           className="rounded-full border border-[#E8DCCB] bg-white px-4 py-2 font-['Inter'] text-sm font-semibold text-[#6B5A50] transition-colors hover:bg-[#F0E6DA]"
         >
           ‹ Semana anterior
@@ -268,14 +339,14 @@ export default function PainelEncomendasSemanal() {
         </span>
         <button
           type="button"
-          onClick={() => setSegundaISO(adicionarDias(segundaISO, 7))}
+          onClick={() => mudarSemana(adicionarDias(segundaISO, 7))}
           className="rounded-full border border-[#E8DCCB] bg-white px-4 py-2 font-['Inter'] text-sm font-semibold text-[#6B5A50] transition-colors hover:bg-[#F0E6DA]"
         >
           Próxima semana ›
         </button>
         <button
           type="button"
-          onClick={() => setSegundaISO(segundaDaSemanaAtual())}
+          onClick={() => mudarSemana(segundaDaSemanaAtual())}
           className="rounded-full px-3 py-2 font-['Inter'] text-xs font-semibold text-[#9C8B7F] transition-colors hover:bg-[#F0E6DA]"
         >
           Semana atual
@@ -298,6 +369,25 @@ export default function PainelEncomendasSemanal() {
         aberto={resumoAberto}
         aoAlternar={() => setResumoAberto((valor) => !valor)}
         datasDaSemana={datasDaSemana}
+      />
+
+      {/* ------- Sugestões de Adiantamento (Congelamento) ------- */}
+      {mensagemAcao && (
+        <div
+          className={`mb-6 rounded-xl px-4 py-3 font-['Inter'] text-sm ${
+            mensagemAcao.tipo === "sucesso"
+              ? "bg-[#DDEFE3] text-[#285A3E]"
+              : "bg-[#FFE1E1] text-[#8A2C2C]"
+          }`}
+        >
+          {mensagemAcao.texto}
+        </div>
+      )}
+
+      <SugestoesAdiantamento
+        pedidos={pedidos ?? []}
+        salvandoSabor={salvandoSabor}
+        aoMarcar={marcarComoAdiantado}
       />
 
       {/* ------- Colunas de pedidos por dia ------- */}
@@ -481,6 +571,84 @@ function CentralDeProducao({ resumo, aberto, aoAlternar, datasDaSemana }) {
   );
 }
 
+/**
+ * ============================================================
+ * SUGESTÕES DE ADIANTAMENTO (CONGELAMENTO)
+ * ============================================================
+ * Agrupa os lotes PENDENTES de sabores congeláveis (de pedidos ainda
+ * não entregues) e oferece a ação de um clique só. A seção some
+ * sozinha quando não há mais nada que possa ser adiantado.
+ */
+function SugestoesAdiantamento({ pedidos, salvandoSabor, aoMarcar }) {
+  const porSabor = new Map();
+  for (const pedido of pedidos) {
+    if (pedido.status === "ENTREGUE") continue;
+    for (const item of pedido.itens) {
+      if (!item.podeCongelar || item.statusProducao !== "PENDENTE") continue;
+      const grupo = porSabor.get(item.saborNome) ?? {
+        saborNome: item.saborNome,
+        quantidade: 0,
+        lotes: 0,
+        itemIds: [],
+      };
+      grupo.quantidade += item.quantidade;
+      grupo.lotes += 1;
+      grupo.itemIds.push(item.id);
+      porSabor.set(item.saborNome, grupo);
+    }
+  }
+  const grupos = [...porSabor.values()].sort((a, b) => b.quantidade - a.quantidade);
+
+  if (grupos.length === 0) return null;
+
+  return (
+    <section className="mb-8 rounded-2xl bg-white/60 p-4 sm:p-5">
+      <h2 className="mb-1 font-['Baloo_2'] text-xl font-semibold text-[#3E2723]">
+        Sugestões de Adiantamento <span aria-hidden="true">❄</span>
+      </h2>
+      <p className="mb-4 font-['Inter'] text-sm text-[#6B5A50]">
+        Estes sabores congelam bem — produza antes e alivie os dias de pico.
+      </p>
+
+      <div className="flex flex-col gap-3">
+        {grupos.map((grupo) => (
+          <article
+            key={grupo.saborNome}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border-l-4 border-l-[#2F6690] bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#DCEBF5] text-xl"
+                aria-hidden="true"
+              >
+                ❄
+              </span>
+              <p className="font-['Inter'] text-sm text-[#3E2723]">
+                Você tem{" "}
+                <strong className="font-['Baloo_2'] text-lg">{grupo.quantidade} doces</strong> de{" "}
+                <strong>{grupo.saborNome}</strong>{" "}
+                <span className="text-[#9C8B7F]">
+                  ({grupo.lotes} {grupo.lotes === 1 ? "lote" : "lotes"})
+                </span>{" "}
+                que podem ser adiantados para aliviar o fim de semana!
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => aoMarcar(grupo)}
+              disabled={salvandoSabor !== null}
+              className="rounded-full bg-[#2F6690] px-5 py-2.5 font-['Inter'] text-sm font-semibold text-white transition-colors hover:bg-[#1F4D6E] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {salvandoSabor === grupo.saborNome ? "Salvando…" : "❄ Marcar como adiantado"}
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function BadgeSabor({ sabor, cor }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-white p-3 pr-4 shadow-sm">
@@ -540,7 +708,14 @@ function CardPedido({ pedido }) {
             key={item.saborNome}
             className="flex items-center justify-between font-['Inter'] text-sm text-[#4A3D35]"
           >
-            <span>{item.saborNome}</span>
+            <span>
+              {item.saborNome}
+              {item.statusProducao === "CONGELADO" && (
+                <span className="ml-1.5 rounded-full bg-[#DCEBF5] px-1.5 py-0.5 text-xs font-semibold text-[#1F4D6E]">
+                  ❄ adiantado
+                </span>
+              )}
+            </span>
             <span className="font-semibold">{item.quantidade} un.</span>
           </li>
         ))}

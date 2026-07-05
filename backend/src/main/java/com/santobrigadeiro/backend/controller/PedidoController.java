@@ -1,9 +1,12 @@
 package com.santobrigadeiro.backend.controller;
 
 import com.santobrigadeiro.backend.dto.AtualizacaoStatusPedidoDTO;
+import com.santobrigadeiro.backend.dto.AtualizacaoStatusProducaoDTO;
+import com.santobrigadeiro.backend.dto.ItemPedidoResponseDTO;
 import com.santobrigadeiro.backend.dto.PedidoRequestDTO;
 import com.santobrigadeiro.backend.dto.PedidoResponseDTO;
 import com.santobrigadeiro.backend.dto.ResumoProducaoSemanalDTO;
+import com.santobrigadeiro.backend.entity.ItemPedido;
 import com.santobrigadeiro.backend.entity.Pedido;
 import com.santobrigadeiro.backend.service.PedidoService;
 import jakarta.validation.Valid;
@@ -59,5 +62,15 @@ public class PedidoController {
             @Valid @RequestBody AtualizacaoStatusPedidoDTO dto) {
         Pedido pedido = pedidoService.atualizarStatus(id, dto.getStatus());
         return ResponseEntity.ok(PedidoResponseDTO.fromEntity(pedido));
+    }
+
+    // PATCH: estado de fabricação de um LOTE específico (adiantamento/
+    // congelamento). O grão é o item: cada sabor tem sua regra de frio.
+    @PatchMapping("/itens/{id}/status-producao")
+    public ResponseEntity<ItemPedidoResponseDTO> atualizarStatusProducaoItem(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody AtualizacaoStatusProducaoDTO dto) {
+        ItemPedido item = pedidoService.atualizarStatusProducaoItem(id, dto.getStatusProducao());
+        return ResponseEntity.ok(ItemPedidoResponseDTO.fromEntity(item));
     }
 }
