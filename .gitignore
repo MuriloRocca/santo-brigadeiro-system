@@ -12,8 +12,9 @@ build/
 *.jar
 *.war
 *.ear
-# Exceção: o wrapper do Maven, se existir, DEVE ser versionado.
-!.mvn/wrapper/maven-wrapper.jar
+# Exceção: o wrapper do Maven, se existir, DEVE ser versionado
+# (em qualquer subpasta — ex.: backend/.mvn/wrapper/maven-wrapper.jar).
+!**/.mvn/wrapper/maven-wrapper.jar
 
 # --- Logs ---
 *.log
