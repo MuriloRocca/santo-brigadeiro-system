@@ -134,6 +134,7 @@ const SABOR_CONGELAVEL_MOCK = {
   Tradicional: true,
   Belga: false,
   "Ninho com Nutella": false,
+  "Paçoca": true,
 };
 
 const PEDIDOS_MOCK_BASE = [
@@ -148,6 +149,13 @@ const PEDIDOS_MOCK_BASE = [
   { id: 100241, offsetDias: 5, horarioEntrega: "10:00:00", status: "PENDENTE", cliente: "Carla Souza", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300120, sabor: "Tradicional", quantidade: 100 }] },
   { id: 100242, offsetDias: 5, horarioEntrega: "16:00:00", status: "PENDENTE", cliente: "Carla Souza", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300121, sabor: "Tradicional", quantidade: 100 }] },
   { id: 100243, offsetDias: 6, horarioEntrega: "09:30:00", status: "ENTREGUE", cliente: "Luciana Dias", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300122, sabor: "Belga", quantidade: 25 }] },
+  // Encomendas de demonstração da V11 — pedidos mistos e o pico do casamento.
+  { id: 100244, offsetDias: 2, horarioEntrega: "14:00:00", status: "PENDENTE", cliente: "Dona Rosa", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300123, sabor: "Tradicional", quantidade: 25 }] },
+  { id: 100245, offsetDias: 3, horarioEntrega: "09:00:00", status: "PENDENTE", cliente: "Café TechDoce", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300124, sabor: "Belga", quantidade: 50 }, { id: 300125, sabor: "Tradicional", quantidade: 25 }] },
+  { id: 100246, offsetDias: 4, horarioEntrega: "17:00:00", status: "PENDENTE", cliente: "Família do Théo", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300126, sabor: "Ninho com Nutella", quantidade: 100 }, { id: 300127, sabor: "Paçoca", quantidade: 25 }] },
+  { id: 100247, offsetDias: 5, horarioEntrega: "11:00:00", status: "PENDENTE", cliente: "Fernanda & Tiago", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300128, sabor: "Tradicional", quantidade: 100 }, { id: 300129, sabor: "Belga", quantidade: 100 }, { id: 300130, sabor: "Paçoca", quantidade: 50 }] },
+  { id: 100248, offsetDias: 5, horarioEntrega: "19:00:00", status: "PENDENTE", cliente: "Bia Formanda", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300131, sabor: "Tradicional", quantidade: 100 }] },
+  { id: 100249, offsetDias: 6, horarioEntrega: "10:00:00", status: "PENDENTE", cliente: "Camila Andrade", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300132, sabor: "Tradicional", quantidade: 50 }, { id: 300133, sabor: "Belga", quantidade: 25 }] },
 ];
 
 function gerarPedidosMock(segundaISO) {
