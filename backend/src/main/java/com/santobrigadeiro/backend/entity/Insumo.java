@@ -40,6 +40,12 @@ public class Insumo {
     @Column(name = "estoque_minimo", precision = 10, scale = 3)
     private BigDecimal estoqueMinimo;
 
+    // Custo estimado por unidade de compra (lata, grama, unidade...).
+    // Zero = "custo não cadastrado": a reposição funciona normalmente,
+    // apenas sem gerar lançamento automático no caixa.
+    @Column(name = "custo_unitario", nullable = false, precision = 10, scale = 2)
+    private BigDecimal custoUnitario = BigDecimal.ZERO;
+
     @Column(name = "criado_em", nullable = false, updatable = false)
     private LocalDateTime criadoEm;
 

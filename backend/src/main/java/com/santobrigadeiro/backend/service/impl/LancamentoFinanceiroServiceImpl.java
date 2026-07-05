@@ -2,10 +2,12 @@ package com.santobrigadeiro.backend.service.impl;
 
 import com.santobrigadeiro.backend.dto.FluxoCaixaResumoDTO;
 import com.santobrigadeiro.backend.dto.LancamentoFinanceiroRequestDTO;
+import com.santobrigadeiro.backend.entity.Insumo;
 import com.santobrigadeiro.backend.entity.LancamentoFinanceiro;
 import com.santobrigadeiro.backend.entity.Pedido;
 import com.santobrigadeiro.backend.entity.enums.CategoriaLancamento;
 import com.santobrigadeiro.backend.entity.enums.TipoLancamento;
+import com.santobrigadeiro.backend.entity.enums.UnidadeMedida;
 import com.santobrigadeiro.backend.exception.RecursoNaoEncontradoException;
 import com.santobrigadeiro.backend.exception.RegraDeNegocioException;
 import com.santobrigadeiro.backend.repository.LancamentoFinanceiroRepository;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -90,6 +93,38 @@ public class LancamentoFinanceiroServiceImpl implements LancamentoFinanceiroServ
         lancamento.setPedido(pedido);
 
         return lancamentoRepository.save(lancamento);
+    }
+
+    @Override
+    @Transactional
+    public LancamentoFinanceiro registrarCompraDeInsumo(Insumo insumo, BigDecimal quantidade) {
+        BigDecimal custoUnitario = insumo.getCustoUnitario();
+        // Sem custo cadastrado não há o que lançar — e o caixa não aceita
+        // valor zero (CHECK valor > 0). A reposição de estoque segue
+        // válida; o custo pode ser configurado depois.
+        if (custoUnitario == null || custoUnitario.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        BigDecimal custoTotal = custoUnitario.multiply(quantidade).setScale(2, RoundingMode.HALF_UP);
+
+        LancamentoFinanceiro lancamento = new LancamentoFinanceiro();
+        lancamento.setTipo(TipoLancamento.SAIDA);
+        lancamento.setCategoria(CategoriaLancamento.COMPRA_INSUMO);
+        lancamento.setValor(custoTotal);
+        lancamento.setDescricao("Reposição rápida: +" + quantidade.stripTrailingZeros().toPlainString()
+                + " " + rotuloUnidade(insumo.getUnidadeMedida()) + " de " + insumo.getNome());
+        lancamento.setDataLancamento(LocalDate.now());
+
+        return lancamentoRepository.save(lancamento);
+    }
+
+    private String rotuloUnidade(UnidadeMedida unidade) {
+        return switch (unidade) {
+            case GRAMAS -> "g";
+            case QUILOS -> "kg";
+            case UNIDADES -> "un.";
+        };
     }
 
     @Override

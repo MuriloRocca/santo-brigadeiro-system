@@ -155,7 +155,7 @@ export default function PainelEstoque() {
       }
       setMensagemAcao({
         tipo: "sucesso",
-        texto: `${botao.rotulo} adicionado em ${item.nome}. Movimentação registrada no histórico.`,
+        texto: `${botao.rotulo} em ${item.nome} — estoque abastecido e gasto registrado no Painel Financeiro! 🎉`,
       });
     } catch (erroCapturado) {
       console.warn("Falha ao adicionar estoque:", erroCapturado.message);

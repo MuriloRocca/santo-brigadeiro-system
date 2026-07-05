@@ -2,10 +2,8 @@ package com.santobrigadeiro.backend.controller;
 
 import com.santobrigadeiro.backend.dto.AdicionarEstoqueRequestDTO;
 import com.santobrigadeiro.backend.dto.EstoqueItemResponseDTO;
-import com.santobrigadeiro.backend.dto.MovimentacaoEstoqueRequestDTO;
-import com.santobrigadeiro.backend.entity.enums.TipoMovimentacao;
+import com.santobrigadeiro.backend.service.EstoqueService;
 import com.santobrigadeiro.backend.service.InsumoService;
-import com.santobrigadeiro.backend.service.MovimentacaoEstoqueService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,9 +13,8 @@ import java.util.List;
 
 /**
  * Fachada de leitura/reposição rápida para o painel visual de estoque.
- * Não possui regra própria: compõe os serviços já existentes — a
- * reposição de um clique vira uma movimentação de ENTRADA normal, com
- * saldo atualizado e histórico auditável pelo módulo de movimentações.
+ * A reposição de um clique atualiza o saldo, grava o histórico auditável
+ * e — via evento de domínio — registra a despesa de compra no caixa.
  */
 @RestController
 @RequestMapping("/api/estoque")
@@ -25,7 +22,7 @@ import java.util.List;
 public class EstoqueController {
 
     private final InsumoService insumoService;
-    private final MovimentacaoEstoqueService movimentacaoEstoqueService;
+    private final EstoqueService estoqueService;
 
     @GetMapping
     public ResponseEntity<List<EstoqueItemResponseDTO>> listar() {
@@ -40,12 +37,7 @@ public class EstoqueController {
     public ResponseEntity<EstoqueItemResponseDTO> adicionar(
             @PathVariable("id") Long id,
             @Valid @RequestBody AdicionarEstoqueRequestDTO dto) {
-        MovimentacaoEstoqueRequestDTO movimentacao = new MovimentacaoEstoqueRequestDTO();
-        movimentacao.setTipo(TipoMovimentacao.ENTRADA);
-        movimentacao.setQuantidade(dto.getQuantidade());
-        movimentacao.setMotivo("Reposição rápida pelo painel de estoque");
-
-        var registrada = movimentacaoEstoqueService.registrar(id, movimentacao);
+        var registrada = estoqueService.reporRapido(id, dto.getQuantidade());
         return ResponseEntity.ok(EstoqueItemResponseDTO.fromEntity(registrada.getInsumo()));
     }
 }
