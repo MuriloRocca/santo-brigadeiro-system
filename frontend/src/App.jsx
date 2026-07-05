@@ -1,9 +1,11 @@
 import { useState } from "react";
 import PainelEncomendasSemanal from "./components/PainelEncomendasSemanal";
+import PainelEstoque from "./components/PainelEstoque";
 import PainelFinanceiro from "./components/PainelFinanceiro";
 
 const ABAS = [
   { chave: "encomendas", label: "Encomendas" },
+  { chave: "estoque", label: "Estoque" },
   { chave: "financeiro", label: "Financeiro" },
 ];
 
@@ -32,7 +34,9 @@ function App() {
         ))}
       </nav>
 
-      {abaAtiva === "encomendas" ? <PainelEncomendasSemanal /> : <PainelFinanceiro />}
+      {abaAtiva === "encomendas" && <PainelEncomendasSemanal />}
+      {abaAtiva === "estoque" && <PainelEstoque />}
+      {abaAtiva === "financeiro" && <PainelFinanceiro />}
     </div>
   );
 }

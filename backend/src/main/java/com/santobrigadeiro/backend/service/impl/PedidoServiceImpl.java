@@ -1,6 +1,7 @@
 package com.santobrigadeiro.backend.service.impl;
 
 import com.santobrigadeiro.backend.dto.ItemPedidoRequestDTO;
+import com.santobrigadeiro.backend.dto.MovimentacaoEstoqueRequestDTO;
 import com.santobrigadeiro.backend.dto.PedidoRequestDTO;
 import com.santobrigadeiro.backend.dto.ResumoProducaoSemanalDTO;
 import com.santobrigadeiro.backend.dto.TotalPorDiaSaborDTO;
@@ -8,10 +9,12 @@ import com.santobrigadeiro.backend.dto.TotalPorSaborDTO;
 import com.santobrigadeiro.backend.entity.*;
 import com.santobrigadeiro.backend.entity.enums.StatusPedido;
 import com.santobrigadeiro.backend.entity.enums.StatusProducaoItem;
+import com.santobrigadeiro.backend.entity.enums.TipoMovimentacao;
 import com.santobrigadeiro.backend.event.PedidoEntregueEvent;
 import com.santobrigadeiro.backend.exception.RecursoNaoEncontradoException;
 import com.santobrigadeiro.backend.exception.RegraDeNegocioException;
 import com.santobrigadeiro.backend.repository.*;
+import com.santobrigadeiro.backend.service.MovimentacaoEstoqueService;
 import com.santobrigadeiro.backend.service.PedidoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -37,6 +40,8 @@ public class PedidoServiceImpl implements PedidoService {
     private final TipoLoteRepository tipoLoteRepository;
     private final InsumoRepository insumoRepository;
     private final ItemPedidoRepository itemPedidoRepository;
+    private final FichaTecnicaRepository fichaTecnicaRepository;
+    private final MovimentacaoEstoqueService movimentacaoEstoqueService;
     // Publica eventos de domínio SEM conhecer quem os consome (desacoplamento).
     private final ApplicationEventPublisher eventPublisher;
 
@@ -215,6 +220,12 @@ public class PedidoServiceImpl implements PedidoService {
                 .orElseThrow(() -> new RecursoNaoEncontradoException(
                         "Item de pedido não encontrado: id " + itemId));
 
+        // Idempotência: repetir o mesmo estado não pode repetir a baixa
+        // (nem o estorno) de insumos no estoque.
+        if (novoStatus == item.getStatusProducao()) {
+            return item;
+        }
+
         if (item.getPedido().getStatus() == StatusPedido.ENTREGUE) {
             throw new RegraDeNegocioException(
                     "O pedido deste item já foi entregue; o status de produção não pode mais ser alterado.");
@@ -229,7 +240,37 @@ public class PedidoServiceImpl implements PedidoService {
                             + "Este lote precisa ser produzido na data da entrega.");
         }
 
+        // Gatilho de estoque: congelar um lote CONSOME os insumos da ficha
+        // técnica (o doce foi de fato produzido); desfazer o congelamento
+        // ESTORNA as mesmas quantidades. Tudo passa pelo módulo de
+        // movimentações — que atualiza o saldo e grava o histórico
+        // auditável na mesma transação. Se faltar insumo, o service de
+        // estoque lança RegraDeNegocioException e o rollback devolve o
+        // item ao estado anterior: nunca congela sem ter ingrediente.
+        if (novoStatus == StatusProducaoItem.CONGELADO) {
+            movimentarInsumosDoLote(item, TipoMovimentacao.SAIDA,
+                    "Produção antecipada (congelamento) - pedido #" + item.getPedido().getId());
+        } else if (item.getStatusProducao() == StatusProducaoItem.CONGELADO) {
+            movimentarInsumosDoLote(item, TipoMovimentacao.ENTRADA,
+                    "Estorno de congelamento - pedido #" + item.getPedido().getId());
+        }
+
         item.setStatusProducao(novoStatus);
         return itemPedidoRepository.save(item);
+    }
+
+    private void movimentarInsumosDoLote(ItemPedido item, TipoMovimentacao tipo, String motivo) {
+        List<FichaTecnica> fichas = fichaTecnicaRepository.findBySaborId(item.getSabor().getId());
+        BigDecimal quantidadeDoLote = BigDecimal.valueOf(item.getTipoLote().getQuantidade());
+
+        // Sabor sem ficha técnica cadastrada não movimenta nada — o
+        // congelamento continua permitido, apenas sem controle de insumo.
+        for (FichaTecnica ficha : fichas) {
+            MovimentacaoEstoqueRequestDTO movimentacao = new MovimentacaoEstoqueRequestDTO();
+            movimentacao.setTipo(tipo);
+            movimentacao.setQuantidade(ficha.getQuantidadePorUnidade().multiply(quantidadeDoLote));
+            movimentacao.setMotivo(motivo);
+            movimentacaoEstoqueService.registrar(ficha.getInsumo().getId(), movimentacao);
+        }
     }
 }
