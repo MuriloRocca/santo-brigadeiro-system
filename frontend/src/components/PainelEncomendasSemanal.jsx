@@ -330,6 +330,49 @@ export default function PainelEncomendasSemanal() {
     });
   }
 
+  // Baixa de entrega direto no card. No backend, virar ENTREGUE também
+  // dispara a receita automática no fluxo de caixa (evento de domínio) —
+  // e, como o resumo de produção exclui pedidos entregues, a Central e
+  // as sugestões de congelamento caem em cascata no recarregamento.
+  async function entregarPedido(pedido) {
+    setSalvandoChave(`entregar-${pedido.id}`);
+    setMensagemAcao(null);
+    try {
+      if (usandoMock) {
+        // Modo exemplo: simula localmente — calcularResumoLocal já
+        // ignora pedidos ENTREGUES, então a cascata acontece igual.
+        const atualizados = pedidos.map((p) =>
+          p.id === pedido.id ? { ...p, status: "ENTREGUE" } : p
+        );
+        setPedidos(atualizados);
+        setResumo(calcularResumoLocal(atualizados));
+      } else {
+        const resposta = await fetch(`/api/pedidos/${pedido.id}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "ENTREGUE" }),
+        });
+        if (!resposta.ok) {
+          throw new Error(`status ${resposta.status}`);
+        }
+        setVersaoDados((versao) => versao + 1); // recarrega a verdade do servidor
+      }
+      setMensagemAcao({
+        tipo: "sucesso",
+        texto: `Pedido de ${pedido.clienteNome} entregue! A receita da venda já caiu no fluxo de caixa. 🎉`,
+      });
+    } catch (erroCapturado) {
+      console.warn("Falha ao entregar pedido:", erroCapturado.message);
+      setMensagemAcao({
+        tipo: "erro",
+        texto: `Não foi possível entregar o pedido de ${pedido.clienteNome}. Tente novamente.`,
+      });
+      setVersaoDados((versao) => versao + 1); // ressincroniza com o servidor
+    } finally {
+      setSalvandoChave(null);
+    }
+  }
+
   if (carregando && pedidos === null) {
     return (
       <div className="flex h-64 items-center justify-center font-['Inter'] text-lg text-[#3E2723]">
@@ -442,6 +485,7 @@ export default function PainelEncomendasSemanal() {
                       pedido={pedido}
                       salvandoChave={salvandoChave}
                       aoDesfazer={desfazerAdiantamento}
+                      aoEntregar={entregarPedido}
                     />
                   ))}
                 </div>
@@ -717,7 +761,7 @@ function BadgeSabor({ sabor, cor }) {
  * CARD DE PEDIDO
  * ============================================================
  */
-function CardPedido({ pedido, salvandoChave, aoDesfazer }) {
+function CardPedido({ pedido, salvandoChave, aoDesfazer, aoEntregar }) {
   const statusConfig = STATUS_CONFIG[pedido.status];
 
   return (
@@ -782,6 +826,17 @@ function CardPedido({ pedido, salvandoChave, aoDesfazer }) {
           {pedido.forminhaNome}
         </span>
       </div>
+
+      {pedido.status !== "ENTREGUE" && (
+        <button
+          type="button"
+          onClick={() => aoEntregar(pedido)}
+          disabled={salvandoChave !== null}
+          className="mt-3 w-full rounded-full bg-[#3F7D5C] px-4 py-2 font-['Inter'] text-sm font-semibold text-white transition-colors hover:bg-[#285A3E] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {salvandoChave === `entregar-${pedido.id}` ? "Entregando…" : "✓ Entregar pedido"}
+        </button>
+      )}
     </article>
   );
 }
