@@ -18,17 +18,30 @@ const NIVEL_CONFIG = {
   SEM_MINIMO: { rotulo: "sem mínimo definido", corBarra: "#8D6E63", corFundo: "bg-[#F0E6DA]", corTexto: "text-[#5D4037]" },
 };
 
-// Botões de reposição rápida por unidade de medida — zero digitação.
+// Botões de reposição rápida — zero digitação. Resolução em duas
+// camadas: insumos com embalagem própria são reconhecidos por
+// palavra-chave no nome (ex.: leite condensado é reposto em LATAS);
+// os demais caem no padrão da unidade de medida.
 const UNIDADE_CONFIG = {
   GRAMAS: { sufixo: "g", botoes: [{ rotulo: "+500 g", quantidade: 500 }, { rotulo: "+1 kg", quantidade: 1000 }] },
   QUILOS: { sufixo: "kg", botoes: [{ rotulo: "+1 kg", quantidade: 1 }, { rotulo: "+5 kg", quantidade: 5 }] },
-  UNIDADES: { sufixo: "un.", botoes: [{ rotulo: "+50", quantidade: 50 }, { rotulo: "+100", quantidade: 100 }] },
+  UNIDADES: { sufixo: "un.", botoes: [{ rotulo: "+10", quantidade: 10 }, { rotulo: "+50", quantidade: 50 }] },
 };
+
+const CONFIG_POR_PALAVRA_CHAVE = [
+  { palavraChave: "leite condensado", sufixo: "latas", botoes: [{ rotulo: "+2 latas", quantidade: 2 }, { rotulo: "+10 latas", quantidade: 10 }] },
+  { palavraChave: "forminha", sufixo: "un.", botoes: [{ rotulo: "+50", quantidade: 50 }, { rotulo: "+100", quantidade: 100 }] },
+];
+
+function configDoInsumo(item) {
+  const nomeLower = (item.nome ?? "").toLowerCase();
+  const especifica = CONFIG_POR_PALAVRA_CHAVE.find((config) => nomeLower.includes(config.palavraChave));
+  return especifica ?? UNIDADE_CONFIG[item.unidadeMedida] ?? { sufixo: "", botoes: [] };
+}
 
 const formatadorQuantidade = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 });
 
-function formatarQuantidade(valor, unidadeMedida) {
-  const sufixo = UNIDADE_CONFIG[unidadeMedida]?.sufixo ?? "";
+function formatarQuantidade(valor, sufixo) {
   return `${formatadorQuantidade.format(valor ?? 0)} ${sufixo}`.trim();
 }
 
@@ -68,9 +81,9 @@ function mapearItem(bruto) {
  * Um item de cada nível, para a demonstração mostrar as três cores.
  */
 const ESTOQUE_MOCK = [
-  { id: 1, nome: "Leite Condensado", tipoInsumo: "INGREDIENTE", unidadeMedida: "GRAMAS", quantidadeAtual: 5000, estoqueMinimo: 1500 },
-  { id: 2, nome: "Granulado", tipoInsumo: "INGREDIENTE", unidadeMedida: "GRAMAS", quantidadeAtual: 600, estoqueMinimo: 800 },
-  { id: 3, nome: "Forminha Rosa", tipoInsumo: "FORMINHA", unidadeMedida: "UNIDADES", quantidadeAtual: 150, estoqueMinimo: 100 },
+  { id: 1, nome: "Leite Condensado", tipoInsumo: "INGREDIENTE", unidadeMedida: "UNIDADES", quantidadeAtual: 12, estoqueMinimo: 4 },
+  { id: 2, nome: "Granulado Belga Callebaut", tipoInsumo: "INGREDIENTE", unidadeMedida: "GRAMAS", quantidadeAtual: 600, estoqueMinimo: 800 },
+  { id: 3, nome: "Forminha Marrom Redonda", tipoInsumo: "FORMINHA", unidadeMedida: "UNIDADES", quantidadeAtual: 150, estoqueMinimo: 100 },
 ];
 
 /**
@@ -232,7 +245,7 @@ export default function PainelEstoque() {
  */
 function CardInsumo({ item, salvandoChave, aoAdicionar }) {
   const nivel = calcularNivel(item);
-  const unidade = UNIDADE_CONFIG[item.unidadeMedida] ?? { sufixo: "", botoes: [] };
+  const config = configDoInsumo(item);
 
   return (
     <article className="flex flex-col rounded-2xl bg-white p-5 shadow-sm">
@@ -246,11 +259,11 @@ function CardInsumo({ item, salvandoChave, aoAdicionar }) {
       </div>
 
       <p className="font-['Baloo_2'] text-3xl font-bold tabular-nums text-[#3E2723]">
-        {formatarQuantidade(item.quantidadeAtual, item.unidadeMedida)}
+        {formatarQuantidade(item.quantidadeAtual, config.sufixo)}
       </p>
       <p className="mb-3 font-['Inter'] text-xs text-[#9C8B7F]">
         {item.estoqueMinimo != null
-          ? `mínimo: ${formatarQuantidade(item.estoqueMinimo, item.unidadeMedida)}`
+          ? `mínimo: ${formatarQuantidade(item.estoqueMinimo, config.sufixo)}`
           : "alerta de mínimo não configurado"}
       </p>
 
@@ -263,7 +276,7 @@ function CardInsumo({ item, salvandoChave, aoAdicionar }) {
       </div>
 
       <div className="mt-auto flex flex-wrap gap-2">
-        {unidade.botoes.map((botao) => {
+        {config.botoes.map((botao) => {
           const chave = `${item.id}-${botao.quantidade}`;
           return (
             <button

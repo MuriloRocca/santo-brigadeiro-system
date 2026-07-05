@@ -28,6 +28,7 @@ const CORES_FORMINHA = [
   { palavraChave: "branc", hex: "#F2F2F2" },
   { palavraChave: "vermelh", hex: "#D9534F" },
   { palavraChave: "verde", hex: "#6FA97A" },
+  { palavraChave: "marrom", hex: "#8D6E63" },
 ];
 
 function corDaForminha(nomeInsumo = "") {
@@ -140,6 +141,13 @@ const PEDIDOS_MOCK_BASE = [
   { id: 100235, offsetDias: 0, horarioEntrega: "09:00:00", status: "EM_PRODUCAO", cliente: "João Ferreira", corForminha: "Forminha Dourada", itens: [{ id: 300113, sabor: "Tradicional", quantidade: 25 }] },
   { id: 100236, offsetDias: 2, horarioEntrega: "16:00:00", status: "PENDENTE", cliente: "Ana Beatriz", corForminha: "Forminha Branca", itens: [{ id: 300114, sabor: "Ninho com Nutella", quantidade: 100 }, { id: 300115, sabor: "Tradicional", quantidade: 50 }] },
   { id: 100237, offsetDias: 5, horarioEntrega: "11:00:00", status: "ENTREGUE", cliente: "Carlos Mendes", corForminha: "Forminha Rosa", itens: [{ id: 300116, sabor: "Belga", quantidade: 25 }] },
+  // Carga de testes da Fase 9.2 — paridade com a migration V9.
+  { id: 100238, offsetDias: 2, horarioEntrega: "15:00:00", status: "PENDENTE", cliente: "João Silva", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300117, sabor: "Tradicional", quantidade: 50 }] },
+  { id: 100239, offsetDias: 3, horarioEntrega: "11:00:00", status: "EM_PRODUCAO", cliente: "Ana Costa", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300118, sabor: "Belga", quantidade: 100 }] },
+  { id: 100240, offsetDias: 4, horarioEntrega: "17:30:00", status: "PENDENTE", cliente: "Pedro Santos", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300119, sabor: "Tradicional", quantidade: 50 }] },
+  { id: 100241, offsetDias: 5, horarioEntrega: "10:00:00", status: "PENDENTE", cliente: "Carla Souza", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300120, sabor: "Tradicional", quantidade: 100 }] },
+  { id: 100242, offsetDias: 5, horarioEntrega: "16:00:00", status: "PENDENTE", cliente: "Carla Souza", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300121, sabor: "Tradicional", quantidade: 100 }] },
+  { id: 100243, offsetDias: 6, horarioEntrega: "09:30:00", status: "ENTREGUE", cliente: "Luciana Dias", corForminha: "Forminha Marrom Redonda", itens: [{ id: 300122, sabor: "Belga", quantidade: 25 }] },
 ];
 
 function gerarPedidosMock(segundaISO) {
