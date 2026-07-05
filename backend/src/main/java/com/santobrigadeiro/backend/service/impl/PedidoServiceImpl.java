@@ -4,14 +4,17 @@ import com.santobrigadeiro.backend.dto.ItemPedidoRequestDTO;
 import com.santobrigadeiro.backend.dto.PedidoRequestDTO;
 import com.santobrigadeiro.backend.entity.*;
 import com.santobrigadeiro.backend.entity.enums.StatusPedido;
+import com.santobrigadeiro.backend.event.PedidoEntregueEvent;
 import com.santobrigadeiro.backend.exception.RecursoNaoEncontradoException;
 import com.santobrigadeiro.backend.exception.RegraDeNegocioException;
 import com.santobrigadeiro.backend.repository.*;
 import com.santobrigadeiro.backend.service.PedidoService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -24,6 +27,8 @@ public class PedidoServiceImpl implements PedidoService {
     private final SaborRepository saborRepository;
     private final TipoLoteRepository tipoLoteRepository;
     private final InsumoRepository insumoRepository;
+    // Publica eventos de domínio SEM conhecer quem os consome (desacoplamento).
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -47,6 +52,9 @@ public class PedidoServiceImpl implements PedidoService {
             pedido.adicionarItem(montarItem(itemDto));
         }
 
+        // Total congelado na criação, a partir dos snapshots de preço.
+        pedido.setValorTotal(calcularValorTotal(pedido));
+
         return pedidoRepository.save(pedido);
     }
 
@@ -54,6 +62,15 @@ public class PedidoServiceImpl implements PedidoService {
         Sabor sabor = saborRepository.findById(itemDto.getSaborId())
                 .orElseThrow(() -> new RecursoNaoEncontradoException(
                         "Sabor não encontrado: id " + itemDto.getSaborId()));
+
+        // Barreira financeira: um sabor sem preço não pode ser vendido —
+        // isso garante que o pedido nunca feche com valor total zerado.
+        if (sabor.getPrecoUnitario() == null
+                || sabor.getPrecoUnitario().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RegraDeNegocioException(
+                    "O sabor '" + sabor.getNome() + "' não possui preço definido. "
+                            + "Defina o preço antes de usá-lo em um pedido.");
+        }
 
         TipoLote tipoLote = tipoLoteRepository.findByQuantidade(itemDto.getQuantidade())
                 .orElseThrow(() -> new RegraDeNegocioException(
@@ -63,7 +80,42 @@ public class PedidoServiceImpl implements PedidoService {
         ItemPedido item = new ItemPedido();
         item.setSabor(sabor);
         item.setTipoLote(tipoLote);
+        item.setPrecoUnitario(sabor.getPrecoUnitario()); // snapshot do preço na venda
         return item;
+    }
+
+    // valorTotal = Σ (preço unitário congelado × quantidade do lote).
+    private BigDecimal calcularValorTotal(Pedido pedido) {
+        return pedido.getItens().stream()
+                .map(item -> item.getPrecoUnitario()
+                        .multiply(BigDecimal.valueOf(item.getTipoLote().getQuantidade())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    @Override
+    @Transactional
+    public Pedido atualizarStatus(Long id, StatusPedido novoStatus) {
+        Pedido pedido = pedidoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Pedido não encontrado: id " + id));
+
+        // ENTREGUE é terminal: impede reprocessar a entrega e, com isso,
+        // duplicar a receita no caixa (idempotência na origem).
+        if (pedido.getStatus() == StatusPedido.ENTREGUE) {
+            throw new RegraDeNegocioException(
+                    "Pedido já entregue: seu status não pode mais ser alterado.");
+        }
+
+        boolean tornouSeEntregue = novoStatus == StatusPedido.ENTREGUE;
+        pedido.setStatus(novoStatus);
+        Pedido salvo = pedidoRepository.save(pedido);
+
+        if (tornouSeEntregue) {
+            // Anuncia o fato. O Financeiro (ou qualquer outro módulo) reage.
+            // O Pedido não sabe — nem precisa saber — o que acontece a seguir.
+            eventPublisher.publishEvent(new PedidoEntregueEvent(salvo));
+        }
+
+        return salvo;
     }
 
     @Override

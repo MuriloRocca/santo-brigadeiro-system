@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public interface LancamentoFinanceiroRepository extends JpaRepository<LancamentoFinanceiro, Long> {
 
@@ -16,6 +17,10 @@ public interface LancamentoFinanceiroRepository extends JpaRepository<Lancamento
     // por id (desc) garante ordem estável entre lançamentos do mesmo dia.
     List<LancamentoFinanceiro> findByDataLancamentoBetweenOrderByDataLancamentoDescIdDesc(
             LocalDate inicio, LocalDate fim);
+
+    // Apoia a idempotência da receita automática: um pedido gera no máximo
+    // um lançamento de entrada.
+    Optional<LancamentoFinanceiro> findFirstByPedidoId(Long pedidoId);
 
     // Soma agregada no banco (não em memória): eficiente e correto mesmo
     // com muitos lançamentos. COALESCE evita null quando não há linhas.

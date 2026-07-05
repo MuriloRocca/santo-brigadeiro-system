@@ -36,6 +36,7 @@ public class SaborServiceImpl implements SaborService {
         Sabor sabor = new Sabor();
         sabor.setNome(dto.getNome());
         sabor.setPodeCongelar(dto.getPodeCongelar());
+        sabor.setPrecoUnitario(dto.getPrecoUnitario());
         sabor.setAtivo(true);
         return saborRepository.save(sabor);
     }
@@ -46,6 +47,7 @@ public class SaborServiceImpl implements SaborService {
         Sabor sabor = buscarPorId(id);
         sabor.setNome(dto.getNome());
         sabor.setPodeCongelar(dto.getPodeCongelar());
+        sabor.setPrecoUnitario(dto.getPrecoUnitario());
         return saborRepository.save(sabor);
     }
 

@@ -4,6 +4,7 @@ import com.santobrigadeiro.backend.dto.FluxoCaixaResumoDTO;
 import com.santobrigadeiro.backend.dto.LancamentoFinanceiroRequestDTO;
 import com.santobrigadeiro.backend.entity.LancamentoFinanceiro;
 import com.santobrigadeiro.backend.entity.Pedido;
+import com.santobrigadeiro.backend.entity.enums.CategoriaLancamento;
 import com.santobrigadeiro.backend.entity.enums.TipoLancamento;
 import com.santobrigadeiro.backend.exception.RecursoNaoEncontradoException;
 import com.santobrigadeiro.backend.exception.RegraDeNegocioException;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -57,6 +59,37 @@ public class LancamentoFinanceiroServiceImpl implements LancamentoFinanceiroServ
         return pedidoRepository.findById(pedidoId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException(
                         "Pedido não encontrado: id " + pedidoId));
+    }
+
+    @Override
+    @Transactional
+    public LancamentoFinanceiro registrarReceitaDePedido(Pedido pedido) {
+        // Idempotência (defesa em profundidade): se a receita deste pedido
+        // já existe, não duplica — apenas devolve a existente. Combinado com
+        // o status ENTREGUE terminal, torna a operação segura a reenvios.
+        Optional<LancamentoFinanceiro> existente =
+                lancamentoRepository.findFirstByPedidoId(pedido.getId());
+        if (existente.isPresent()) {
+            return existente.get();
+        }
+
+        BigDecimal valor = pedido.getValorTotal();
+        if (valor == null || valor.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RegraDeNegocioException(
+                    "O pedido #" + pedido.getId() + " não possui valor total; "
+                            + "não é possível gerar a receita no caixa.");
+        }
+
+        LancamentoFinanceiro lancamento = new LancamentoFinanceiro();
+        lancamento.setTipo(TipoLancamento.ENTRADA);
+        lancamento.setCategoria(CategoriaLancamento.VENDA_PEDIDO);
+        lancamento.setValor(valor);
+        lancamento.setDescricao(
+                "Receita do pedido #" + pedido.getId() + " - " + pedido.getCliente().getNome());
+        lancamento.setDataLancamento(LocalDate.now());
+        lancamento.setPedido(pedido);
+
+        return lancamentoRepository.save(lancamento);
     }
 
     @Override

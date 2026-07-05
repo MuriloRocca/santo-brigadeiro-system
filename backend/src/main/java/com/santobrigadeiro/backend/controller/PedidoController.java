@@ -1,5 +1,6 @@
 package com.santobrigadeiro.backend.controller;
 
+import com.santobrigadeiro.backend.dto.AtualizacaoStatusPedidoDTO;
 import com.santobrigadeiro.backend.dto.PedidoRequestDTO;
 import com.santobrigadeiro.backend.dto.PedidoResponseDTO;
 import com.santobrigadeiro.backend.entity.Pedido;
@@ -38,5 +39,15 @@ public class PedidoController {
                 .toList();
 
         return ResponseEntity.ok(pedidos);
+    }
+
+    // PATCH: transição de status. Ao virar ENTREGUE, o caixa recebe a
+    // receita automaticamente (via evento de domínio, no serviço).
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<PedidoResponseDTO> atualizarStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody AtualizacaoStatusPedidoDTO dto) {
+        Pedido pedido = pedidoService.atualizarStatus(id, dto.getStatus());
+        return ResponseEntity.ok(PedidoResponseDTO.fromEntity(pedido));
     }
 }
