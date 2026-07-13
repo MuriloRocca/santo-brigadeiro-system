@@ -1,14 +1,47 @@
-### Passo 1: Cadastrar a receita do brigadeiro
-POST http://localhost:8080/api/ficha-tecnica
+### Passo 1: Dar preço ao brigadeiro Tradicional (Obrigatório!)
+# Como os sabores antigos ganharam preço R$ 0 de fábrica, precisamos atualizar
+PUT http://localhost:8080/api/sabores/1
 Content-Type: application/json
 
 {
-  "saborId": 1,
-  "insumoId": 1,
-  "quantidadePorUnidade": 0.0125
+  "nome": "Tradicional",
+  "podeCongelar": true,
+  "precoUnitario": 2.50
 }
 
 ###
 
-### Passo 2: Ver o relatório de produção calculando tudo sozinho
-GET http://localhost:8080/api/producao/plano-semanal?dataInicio=2026-07-01&dataFim=2026-07-07
+### Passo 2: Criar um Pedido com o preço "fotografado"
+# O sistema vai ler os 2.50 e calcular o valorTotal = R$ 250.00 sozinho
+POST http://localhost:8080/api/pedidos
+Content-Type: application/json
+
+{
+  "clienteId": 1,
+  "dataEntrega": "2026-07-08",
+  "horarioEntrega": "14:00",
+  "forminhaInsumoId": 1,
+  "itens": [
+    {
+      "saborId": 1,
+      "quantidade": 100
+    }
+  ]
+}
+
+###
+
+### Passo 3: Mudar o status para ENTREGUE (O teste de fogo! 🔥)
+# Isso vai disparar o evento que avisa o Financeiro em segundo plano
+PATCH http://localhost:8080/api/pedidos/1/status
+Content-Type: application/json
+
+{
+  "status": "ENTREGUE"
+}
+
+###
+
+### Passo 4: Conferir o caixa (A mágica da automação)
+# Veja se a ENTRADA de R$ 250,00 apareceu sozinha sem você dar POST no financeiro!
+GET http://localhost:8080/api/financeiro/lancamentos?inicio=2026-07-01&fim=2026-07-31

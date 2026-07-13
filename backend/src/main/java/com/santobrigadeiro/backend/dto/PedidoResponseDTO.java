@@ -4,6 +4,7 @@ import com.santobrigadeiro.backend.entity.Pedido;
 import com.santobrigadeiro.backend.entity.enums.StatusPedido;
 import lombok.Getter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -17,16 +18,19 @@ public class PedidoResponseDTO {
     private final LocalTime horarioEntrega;
     private final StatusPedido status;
     private final String corForminha;
+    private final BigDecimal valorTotal;
     private final List<ItemPedidoResponseDTO> itens;
 
     private PedidoResponseDTO(Long id, String cliente, LocalDate dataEntrega, LocalTime horarioEntrega,
-                               StatusPedido status, String corForminha, List<ItemPedidoResponseDTO> itens) {
+                               StatusPedido status, String corForminha, BigDecimal valorTotal,
+                               List<ItemPedidoResponseDTO> itens) {
         this.id = id;
         this.cliente = cliente;
         this.dataEntrega = dataEntrega;
         this.horarioEntrega = horarioEntrega;
         this.status = status;
         this.corForminha = corForminha;
+        this.valorTotal = valorTotal;
         this.itens = itens;
     }
 
@@ -42,6 +46,7 @@ public class PedidoResponseDTO {
                 pedido.getHorarioEntrega(),
                 pedido.getStatus(),
                 pedido.getForminha().getNome(),
+                pedido.getValorTotal(),
                 itens
         );
     }

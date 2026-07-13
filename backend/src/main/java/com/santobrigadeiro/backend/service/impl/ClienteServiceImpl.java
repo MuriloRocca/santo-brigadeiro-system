@@ -8,6 +8,7 @@ import com.santobrigadeiro.backend.repository.ClienteRepository;
 import com.santobrigadeiro.backend.service.ClienteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,17 @@ public class ClienteServiceImpl implements ClienteService {
     @Transactional(readOnly = true)
     public List<Cliente> listarTodos() {
         return clienteRepository.findAll();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Cliente> listarFrequentes(int limite) {
+        // Guarda-corpo: limite não-positivo não faz sentido e viraria uma
+        // PageRequest inválida (exceção obscura); trata como "sem resultados".
+        if (limite <= 0) {
+            return List.of();
+        }
+        return clienteRepository.buscarPorFrequenciaDePedidos(PageRequest.of(0, limite));
     }
 
     @Override

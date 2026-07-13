@@ -2,9 +2,13 @@ package com.santobrigadeiro.backend.entity;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "sabores")
@@ -26,4 +30,9 @@ public class Sabor {
 
     @Column(nullable = false)
     private boolean ativo = true;
+
+    @NotNull
+    @PositiveOrZero(message = "O preço unitário não pode ser negativo.")
+    @Column(name = "preco_unitario", nullable = false, precision = 10, scale = 2)
+    private BigDecimal precoUnitario = BigDecimal.ZERO;
 }

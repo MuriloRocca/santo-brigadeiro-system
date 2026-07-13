@@ -3,10 +3,12 @@ package com.santobrigadeiro.backend.entity;
 import com.santobrigadeiro.backend.entity.enums.StatusPedido;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -40,6 +42,11 @@ public class Pedido {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private StatusPedido status = StatusPedido.PENDENTE;
+
+    @NotNull
+    @PositiveOrZero
+    @Column(name = "valor_total", nullable = false, precision = 10, scale = 2)
+    private BigDecimal valorTotal = BigDecimal.ZERO;
 
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY)
