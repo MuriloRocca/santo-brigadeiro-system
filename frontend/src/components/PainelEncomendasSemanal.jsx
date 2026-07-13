@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ModalNovaEncomenda from "./ModalNovaEncomenda";
 
 /**
  * ============================================================
@@ -226,6 +227,7 @@ export default function PainelEncomendasSemanal() {
   const [mensagemAcao, setMensagemAcao] = useState(null); // { tipo: "sucesso" | "erro", texto }
   // Incrementado após uma ação para recarregar a verdade do servidor.
   const [versaoDados, setVersaoDados] = useState(0);
+  const [modalNovaEncomendaAberto, setModalNovaEncomendaAberto] = useState(false);
 
   const domingoISO = adicionarDias(segundaISO, 6);
   const datasDaSemana = DIAS_DA_SEMANA.map((_, indice) => adicionarDias(segundaISO, indice));
@@ -399,14 +401,38 @@ export default function PainelEncomendasSemanal() {
 
   return (
     <div className="min-h-screen bg-[#FFF8ED] px-4 py-8 sm:px-8">
-      <header className="mb-6">
-        <h1 className="font-['Baloo_2'] text-3xl font-bold text-[#3E2723] sm:text-4xl">
-          Painel Semanal de Encomendas
-        </h1>
-        <p className="mt-1 font-['Inter'] text-base text-[#6B5A50]">
-          Santo Brigadeiro 013 — visão geral da semana
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-['Baloo_2'] text-3xl font-bold text-[#3E2723] sm:text-4xl">
+            Painel Semanal de Encomendas
+          </h1>
+          <p className="mt-1 font-['Inter'] text-base text-[#6B5A50]">
+            Santo Brigadeiro 013 — visão geral da semana
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setModalNovaEncomendaAberto(true)}
+          className="rounded-full bg-[#3E2723] px-6 py-3 font-['Inter'] text-base font-semibold text-[#FFF8ED] shadow-sm transition-colors hover:bg-[#5D4037]"
+        >
+          + Nova encomenda
+        </button>
       </header>
+
+      {/* Montado só quando aberto: cada abertura começa com estado limpo. */}
+      {modalNovaEncomendaAberto && (
+      <ModalNovaEncomenda
+        aoFechar={() => setModalNovaEncomendaAberto(false)}
+        aoCriar={(pedidoCriado) => {
+          setModalNovaEncomendaAberto(false);
+          setMensagemAcao({
+            tipo: "sucesso",
+            texto: `Encomenda de ${pedidoCriado.cliente} criada para ${formatarDataCurta(pedidoCriado.dataEntrega)}! 🎉`,
+          });
+          setVersaoDados((versao) => versao + 1); // pedido novo aparece na coluna do dia
+        }}
+      />
+      )}
 
       {/* ------- Navegação de semana (só cliques, zero digitação) ------- */}
       <div className="mb-6 flex flex-wrap items-center gap-2">

@@ -26,6 +26,17 @@ public class ClienteController {
         return ResponseEntity.ok(clientes);
     }
 
+    // Clientes mais frequentes (por quantidade de pedidos) — alimenta os
+    // quick-chips de seleção com 1 clique da Nova Encomenda (Fase 11).
+    @GetMapping("/frequentes")
+    public ResponseEntity<List<ClienteResponseDTO>> listarFrequentes(
+            @RequestParam(name = "limite", defaultValue = "8") int limite) {
+        List<ClienteResponseDTO> clientes = clienteService.listarFrequentes(limite).stream()
+                .map(ClienteResponseDTO::fromEntity)
+                .toList();
+        return ResponseEntity.ok(clientes);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ClienteResponseDTO> buscarPorId(@PathVariable Long id) {
         return ResponseEntity.ok(ClienteResponseDTO.fromEntity(clienteService.buscarPorId(id)));
