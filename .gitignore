@@ -39,3 +39,6 @@ Thumbs.db
 # O .env real (com senhas) NÃO deve ir para o Git; versione um .env.example.
 .env
 .env.local
+
+# Baixado automaticamente pelo mvnw na primeira execucao
+backend/.mvn/wrapper/maven-wrapper.jar
