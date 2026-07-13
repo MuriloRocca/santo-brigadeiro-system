@@ -22,6 +22,15 @@ const CATEGORIA_CONFIG = {
   OUTRA_DESPESA: { label: "Outra despesa", corTexto: "text-[#6B5A50]", corFundo: "bg-[#F0E6DA]" },
 };
 
+// Espelha a regra do enum CategoriaLancamento no backend: cada categoria
+// "pertence" a um tipo. O formulário oferece apenas as categorias coerentes
+// com o tipo escolhido — assim o clique nunca produz a combinação que o
+// backend rejeitaria com RegraDeNegocioException.
+const CATEGORIAS_POR_TIPO = {
+  ENTRADA: ["VENDA_PEDIDO", "OUTRA_RECEITA"],
+  SAIDA: ["COMPRA_INSUMO", "DESPESA_OPERACIONAL", "OUTRA_DESPESA"],
+};
+
 /**
  * ============================================================
  * FORMATADORES E DATAS
@@ -71,6 +80,23 @@ function ultimosTrintaDias() {
   return { inicio: paraISOLocal(inicio), fim: paraISOLocal(hoje) };
 }
 
+function hojeISO() {
+  return paraISOLocal(new Date());
+}
+
+// Usado só no modo exemplo (backend fora): recalcula o resumo a partir da
+// lista de lançamentos, para que o card de saldo reaja ao novo lançamento
+// sem inventar um número — os valores continuam batendo com o extrato.
+function calcularResumoLocal(lancamentos) {
+  let totalEntradas = 0;
+  let totalSaidas = 0;
+  for (const lancamento of lancamentos) {
+    if (lancamento.tipo === "ENTRADA") totalEntradas += lancamento.valor;
+    else totalSaidas += lancamento.valor;
+  }
+  return { totalEntradas, totalSaidas, saldo: totalEntradas - totalSaidas };
+}
+
 /**
  * ============================================================
  * ADAPTADOR: formato bruto da API -> formato que o componente usa
@@ -118,6 +144,9 @@ export default function PainelFinanceiro() {
   const [lancamentos, setLancamentos] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [usandoMock, setUsandoMock] = useState(false);
+  // Incrementado após um novo lançamento para recarregar a verdade do
+  // servidor (extrato + saldo) sem F5.
+  const [versaoDados, setVersaoDados] = useState(0);
 
   const periodoInvalido = Boolean(inicio && fim && inicio > fim);
 
@@ -168,7 +197,25 @@ export default function PainelFinanceiro() {
     return () => {
       ativo = false;
     };
-  }, [inicio, fim]);
+  }, [inicio, fim, versaoDados]);
+
+  // Recebe o lançamento recém-criado (formato bruto do POST em modo real,
+  // ou já mapeado no modo exemplo) e faz o extrato/saldo reagirem na hora.
+  function aoLancamentoCriado(lancamentoBruto) {
+    if (usandoMock) {
+      // Modo exemplo: simula localmente para o fluxo de demonstração seguir
+      // clicável sem backend. Prepende e recalcula o resumo a partir da lista.
+      const novo = mapearLancamento(lancamentoBruto);
+      setLancamentos((atuais) => {
+        const atualizados = [novo, ...atuais];
+        setResumo(calcularResumoLocal(atualizados));
+        return atualizados;
+      });
+    } else {
+      // Modo real: recarrega a verdade do servidor (respeita o período).
+      setVersaoDados((versao) => versao + 1);
+    }
+  }
 
   const saldoNegativo = (resumo?.saldo ?? 0) < 0;
 
@@ -265,6 +312,12 @@ export default function PainelFinanceiro() {
         />
       </section>
 
+      {/* ------- Novo lançamento manual (Fase 10) ------- */}
+      <FormularioNovoLancamento
+        usandoMock={usandoMock}
+        aoLancamentoCriado={aoLancamentoCriado}
+      />
+
       {/* ------- Extrato ------- */}
       <section className="rounded-2xl bg-white/60 p-3 sm:p-4">
         <h2 className="mb-3 px-1 font-['Baloo_2'] text-xl font-semibold text-[#3E2723]">
@@ -308,6 +361,231 @@ export default function PainelFinanceiro() {
  * SUBCOMPONENTES
  * ============================================================
  */
+
+/**
+ * ============================================================
+ * FORMULÁRIO DE NOVO LANÇAMENTO (Fase 10)
+ * ============================================================
+ * Lançamento manual no caixa, pensado para o clique: o tipo é um par de
+ * botões (+ Entrada / − Saída), a categoria é um select que só mostra as
+ * opções coerentes com o tipo, e a data já vem preenchida com hoje. O POST
+ * dispara aoLancamentoCriado, que atualiza extrato e saldo na hora (sem F5).
+ */
+function FormularioNovoLancamento({ usandoMock, aoLancamentoCriado }) {
+  const [tipo, setTipo] = useState("ENTRADA");
+  const [categoria, setCategoria] = useState(CATEGORIAS_POR_TIPO.ENTRADA[0]);
+  const [valor, setValor] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [data, setData] = useState(hojeISO);
+  const [salvando, setSalvando] = useState(false);
+  const [mensagem, setMensagem] = useState(null); // { tipo: "sucesso" | "erro", texto }
+
+  const categoriasDisponiveis = CATEGORIAS_POR_TIPO[tipo];
+
+  // Trocar o tipo reseta a categoria para a primeira coerente com o novo
+  // tipo — o select nunca fica com uma combinação que o backend recusaria.
+  function selecionarTipo(novoTipo) {
+    if (novoTipo === tipo) return;
+    setTipo(novoTipo);
+    setCategoria(CATEGORIAS_POR_TIPO[novoTipo][0]);
+    setMensagem(null);
+  }
+
+  // Aceita número > 0; normaliza a vírgula decimal (pt-BR) para ponto.
+  const valorNumerico = Number.parseFloat(String(valor).replace(",", "."));
+  const valorValido = Number.isFinite(valorNumerico) && valorNumerico > 0;
+  const descricaoLimpa = descricao.trim();
+  const formularioValido = valorValido && descricaoLimpa.length > 0 && Boolean(data);
+
+  async function enviar(evento) {
+    evento.preventDefault();
+    // Trava clique duplo (já salvando) e envio inválido na origem.
+    if (salvando || !formularioValido) return;
+    setSalvando(true);
+    setMensagem(null);
+
+    const payload = {
+      tipo,
+      categoria,
+      valor: valorNumerico,
+      descricao: descricaoLimpa,
+      dataLancamento: data,
+    };
+
+    try {
+      if (usandoMock) {
+        // Sem backend: devolve um "lançamento criado" fictício (id único
+        // negativo para não colidir com ids reais) e deixa o painel simular.
+        aoLancamentoCriado({ id: -Date.now(), pedidoId: null, criadoEm: null, ...payload });
+      } else {
+        const resposta = await fetch("/api/financeiro/lancamentos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!resposta.ok) {
+          // O backend devolve mensagens de validação / regra de negócio;
+          // tenta extrair a mais útil, senão mostra o status.
+          let detalhe = `erro ${resposta.status}`;
+          try {
+            const corpo = await resposta.json();
+            detalhe = corpo?.message || corpo?.erro || detalhe;
+          } catch {
+            /* corpo não-JSON: mantém o status */
+          }
+          throw new Error(detalhe);
+        }
+        const criado = await resposta.json();
+        aoLancamentoCriado(criado);
+      }
+
+      // Sucesso: limpa valor e descrição para o próximo lançamento rápido,
+      // preservando tipo/categoria/data (repetições costumam ser do mesmo tipo).
+      setValor("");
+      setDescricao("");
+      setMensagem({
+        tipo: "sucesso",
+        texto: "Lançamento registrado! O extrato e o saldo já foram atualizados. ✅",
+      });
+    } catch (erroCapturado) {
+      console.warn("Falha ao registrar lançamento:", erroCapturado.message);
+      setMensagem({ tipo: "erro", texto: `Não foi possível salvar: ${erroCapturado.message}` });
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const classesInput =
+    "rounded-xl border border-[#E8DCCB] bg-white px-3 py-2 font-['Inter'] text-sm text-[#3E2723] focus:outline-none focus:ring-2 focus:ring-[#3F7D5C]/40";
+  const classesRotulo =
+    "font-['Inter'] text-xs font-semibold uppercase tracking-wide text-[#9C8B7F]";
+  const ehEntrada = tipo === "ENTRADA";
+  const classesBotaoSalvar = ehEntrada
+    ? "bg-[#3F7D5C] hover:bg-[#285A3E]"
+    : "bg-[#D9534F] hover:bg-[#B33A36]";
+
+  return (
+    <section className="mb-8 rounded-2xl bg-white/60 p-4 sm:p-5">
+      <h2 className="mb-4 font-['Baloo_2'] text-xl font-semibold text-[#3E2723]">
+        Novo lançamento
+      </h2>
+
+      <form onSubmit={enviar}>
+        {/* Seletor de tipo — só clique */}
+        <div className="mb-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => selecionarTipo("ENTRADA")}
+            aria-pressed={ehEntrada}
+            className={`rounded-full border px-5 py-2 font-['Inter'] text-sm font-semibold transition-colors ${
+              ehEntrada
+                ? "border-transparent bg-[#3F7D5C] text-white shadow-sm"
+                : "border-[#E8DCCB] bg-white text-[#6B5A50] hover:bg-[#F0E6DA]"
+            }`}
+          >
+            + Entrada
+          </button>
+          <button
+            type="button"
+            onClick={() => selecionarTipo("SAIDA")}
+            aria-pressed={!ehEntrada}
+            className={`rounded-full border px-5 py-2 font-['Inter'] text-sm font-semibold transition-colors ${
+              !ehEntrada
+                ? "border-transparent bg-[#D9534F] text-white shadow-sm"
+                : "border-[#E8DCCB] bg-white text-[#6B5A50] hover:bg-[#F0E6DA]"
+            }`}
+          >
+            − Saída
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Valor */}
+          <label className="flex flex-col gap-1">
+            <span className={classesRotulo}>Valor</span>
+            <div className="relative">
+              <span
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-['Inter'] text-sm text-[#9C8B7F]"
+                aria-hidden="true"
+              >
+                R$
+              </span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={valor}
+                onChange={(evento) => setValor(evento.target.value)}
+                placeholder="0,00"
+                className={`${classesInput} w-32 pl-9 tabular-nums`}
+              />
+            </div>
+          </label>
+
+          {/* Categoria */}
+          <label className="flex flex-col gap-1">
+            <span className={classesRotulo}>Categoria</span>
+            <select
+              value={categoria}
+              onChange={(evento) => setCategoria(evento.target.value)}
+              className={`${classesInput} cursor-pointer`}
+            >
+              {categoriasDisponiveis.map((chave) => (
+                <option key={chave} value={chave}>
+                  {CATEGORIA_CONFIG[chave].label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {/* Descrição */}
+          <label className="flex min-w-[12rem] flex-1 flex-col gap-1">
+            <span className={classesRotulo}>Descrição</span>
+            <input
+              type="text"
+              maxLength={200}
+              value={descricao}
+              onChange={(evento) => setDescricao(evento.target.value)}
+              placeholder={ehEntrada ? "Ex: Venda no balcão" : "Ex: Conta de luz de julho"}
+              className={`${classesInput} w-full`}
+            />
+          </label>
+
+          {/* Data (já vem com hoje) */}
+          <label className="flex flex-col gap-1">
+            <span className={classesRotulo}>Data</span>
+            <input
+              type="date"
+              value={data}
+              onChange={(evento) => setData(evento.target.value)}
+              className={classesInput}
+            />
+          </label>
+
+          {/* Salvar */}
+          <button
+            type="submit"
+            disabled={salvando || !formularioValido}
+            className={`rounded-full px-6 py-2.5 font-['Inter'] text-sm font-semibold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${classesBotaoSalvar}`}
+          >
+            {salvando ? "Salvando…" : "Adicionar lançamento"}
+          </button>
+        </div>
+      </form>
+
+      {mensagem && (
+        <div
+          className={`mt-4 rounded-xl px-4 py-3 font-['Inter'] text-sm ${
+            mensagem.tipo === "sucesso"
+              ? "bg-[#DDEFE3] text-[#285A3E]"
+              : "bg-[#FFE1E1] text-[#8A2C2C]"
+          }`}
+        >
+          {mensagem.texto}
+        </div>
+      )}
+    </section>
+  );
+}
 
 function CampoData({ rotulo, valor, aoMudar }) {
   return (
