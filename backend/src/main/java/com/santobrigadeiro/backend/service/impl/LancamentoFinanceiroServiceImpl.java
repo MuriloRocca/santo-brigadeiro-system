@@ -107,16 +107,43 @@ public class LancamentoFinanceiroServiceImpl implements LancamentoFinanceiroServ
         }
 
         BigDecimal custoTotal = custoUnitario.multiply(quantidade).setScale(2, RoundingMode.HALF_UP);
+        LocalDate hoje = LocalDate.now();
+
+        // Consolidação diária (Fase 13): reposições do mesmo insumo no
+        // mesmo dia acumulam num único lançamento, em vez de poluir o
+        // extrato com uma linha por clique. Exceção deliberada ao caixa
+        // append-only — documentada na entidade; o clique a clique segue
+        // auditável em movimentacoes_estoque.
+        Optional<LancamentoFinanceiro> consolidavel = lancamentoRepository
+                .findFirstByCategoriaAndInsumoIdAndDataLancamento(
+                        CategoriaLancamento.COMPRA_INSUMO, insumo.getId(), hoje);
+
+        if (consolidavel.isPresent()) {
+            LancamentoFinanceiro existente = consolidavel.get();
+            BigDecimal quantidadeAcumulada = existente.getQuantidadeInsumo() == null
+                    ? quantidade
+                    : existente.getQuantidadeInsumo().add(quantidade);
+            existente.setValor(existente.getValor().add(custoTotal));
+            existente.setQuantidadeInsumo(quantidadeAcumulada);
+            existente.setDescricao(descricaoDeReposicao(quantidadeAcumulada, insumo));
+            return lancamentoRepository.save(existente);
+        }
 
         LancamentoFinanceiro lancamento = new LancamentoFinanceiro();
         lancamento.setTipo(TipoLancamento.SAIDA);
         lancamento.setCategoria(CategoriaLancamento.COMPRA_INSUMO);
         lancamento.setValor(custoTotal);
-        lancamento.setDescricao("Reposição rápida: +" + quantidade.stripTrailingZeros().toPlainString()
-                + " " + rotuloUnidade(insumo.getUnidadeMedida()) + " de " + insumo.getNome());
-        lancamento.setDataLancamento(LocalDate.now());
+        lancamento.setInsumo(insumo);
+        lancamento.setQuantidadeInsumo(quantidade);
+        lancamento.setDescricao(descricaoDeReposicao(quantidade, insumo));
+        lancamento.setDataLancamento(hoje);
 
         return lancamentoRepository.save(lancamento);
+    }
+
+    private String descricaoDeReposicao(BigDecimal quantidade, Insumo insumo) {
+        return "Reposição rápida: +" + quantidade.stripTrailingZeros().toPlainString()
+                + " " + rotuloUnidade(insumo.getUnidadeMedida()) + " de " + insumo.getNome();
     }
 
     private String rotuloUnidade(UnidadeMedida unidade) {

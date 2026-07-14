@@ -14,11 +14,17 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Registro imutável (append-only) de uma entrada ou saída no caixa.
- * Segue a mesma filosofia de MovimentacaoEstoque: não há @PreUpdate nem
- * fluxo de alteração — um lançamento errado é corrigido por um novo
- * lançamento de ajuste, jamais por UPDATE, preservando o histórico real
- * do fluxo de caixa como fonte de verdade contábil.
+ * Registro de uma entrada ou saída no caixa, em regra imutável
+ * (append-only): um lançamento errado é corrigido por um novo lançamento
+ * de ajuste, jamais por UPDATE, preservando o histórico do fluxo de
+ * caixa como fonte de verdade contábil.
+ *
+ * EXCEÇÃO DELIBERADA (Fase 13): reposições rápidas do MESMO insumo no
+ * MESMO dia são consolidadas num único lançamento de COMPRA_INSUMO —
+ * valor e quantidade acumulam via atualização, como numa escrituração
+ * diária de compras. A auditoria granular (um registro por clique)
+ * permanece intacta em MovimentacaoEstoque, esta sim append-only sem
+ * exceções. Nenhum outro fluxo pode atualizar lançamentos.
  */
 @Entity
 @Table(name = "lancamentos_financeiros")
@@ -61,6 +67,19 @@ public class LancamentoFinanceiro {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pedido_id")
     private Pedido pedido;
+
+    /**
+     * Vínculo OPCIONAL com o insumo — presente apenas nos lançamentos de
+     * reposição rápida, onde ancora a consolidação diária (a busca é por
+     * insumo + dia, nunca por texto de descrição).
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "insumo_id")
+    private Insumo insumo;
+
+    /** Quantidade acumulada do dia (só nos lançamentos de reposição). */
+    @Column(name = "quantidade_insumo", precision = 10, scale = 3)
+    private BigDecimal quantidadeInsumo;
 
     @Column(name = "criado_em", nullable = false, updatable = false)
     private LocalDateTime criadoEm;
