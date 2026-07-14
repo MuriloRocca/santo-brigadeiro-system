@@ -67,10 +67,29 @@ Decisões de design que devem ser reaproveitadas em telas novas:
   pré-selecionada quando só existe uma; descrição/valor limpam após salvar,
   mas tipo/categoria/data permanecem (lançamentos repetidos são comuns).
 
+## Regras de domínio consolidadas
+
+- **Caixa append-only, com UMA exceção deliberada (Fase 13):** lançamentos
+  financeiros não sofrem UPDATE — correção é feita por lançamento de ajuste.
+  A única exceção é a consolidação diária de reposições rápidas: reposições
+  do MESMO insumo no MESMO dia acumulam num único lançamento de
+  COMPRA_INSUMO (valor somado, quantidade acumulada, descrição regenerada).
+  A âncora da consolidação é o vínculo `insumo_id` + `data_lancamento`
+  (indexado, V13) — nunca casar texto de descrição. A auditoria granular de
+  cada clique permanece em `movimentacoes_estoque`, esta sim append-only sem
+  exceções. Nenhum outro fluxo pode atualizar lançamentos.
+- **Lotes válidos vêm do banco:** quantidades de itens de pedido devem
+  existir em `tipos_lote` (25/50/100); o service rejeita qualquer outra.
+- **Eventos de domínio síncronos e transacionais:** entrega de pedido →
+  receita no caixa; reposição de estoque → despesa no caixa. Ambos na mesma
+  transação (atômicos), via ApplicationEventPublisher + @EventListener.
+
 ## Branch de trabalho
 
-`claude/financial-module-cash-flow-4ob9sj` — Fases 10 (lançamento manual no
-financeiro) e 11 (nova encomenda sem digitação) concluídas e homologadas.
+Fases concluídas e homologadas: 10 (lançamento manual no financeiro),
+11 (nova encomenda sem digitação), 12 (FAB global — branch
+`claude/fase-12-fab-nova-encomenda`), 13 (consolidação diária de reposições
+— branch `claude/fase-13-consolidacao-lancamentos`).
 
 ## OBRIGATÓRIO antes de cada commit
 
