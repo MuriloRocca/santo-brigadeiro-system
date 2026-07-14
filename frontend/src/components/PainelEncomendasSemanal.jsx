@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import ModalNovaEncomenda from "./ModalNovaEncomenda";
 
 /**
  * ============================================================
@@ -215,7 +214,12 @@ function calcularResumoLocal(pedidosMapeados) {
  * COMPONENTE
  * ============================================================
  */
-export default function PainelEncomendasSemanal() {
+/**
+ * Props (Fase 12): a criação de encomendas subiu para o App — o modal é
+ * global. `aoAbrirNovaEncomenda` abre o modal do App; `versaoExterna`
+ * muda quando uma encomenda é criada lá fora e força a recarga daqui.
+ */
+export default function PainelEncomendasSemanal({ aoAbrirNovaEncomenda, versaoExterna = 0 }) {
   const [segundaISO, setSegundaISO] = useState(segundaDaSemanaAtual);
   const [pedidos, setPedidos] = useState(null);
   const [resumo, setResumo] = useState(null);
@@ -227,7 +231,6 @@ export default function PainelEncomendasSemanal() {
   const [mensagemAcao, setMensagemAcao] = useState(null); // { tipo: "sucesso" | "erro", texto }
   // Incrementado após uma ação para recarregar a verdade do servidor.
   const [versaoDados, setVersaoDados] = useState(0);
-  const [modalNovaEncomendaAberto, setModalNovaEncomendaAberto] = useState(false);
 
   const domingoISO = adicionarDias(segundaISO, 6);
   const datasDaSemana = DIAS_DA_SEMANA.map((_, indice) => adicionarDias(segundaISO, indice));
@@ -275,7 +278,7 @@ export default function PainelEncomendasSemanal() {
     return () => {
       ativo = false;
     };
-  }, [segundaISO, versaoDados]);
+  }, [segundaISO, versaoDados, versaoExterna]);
 
   // Mensagens de ação valem apenas para a semana em exibição — por isso
   // a navegação de semana passa por aqui, que limpa o aviso anterior.
@@ -412,27 +415,12 @@ export default function PainelEncomendasSemanal() {
         </div>
         <button
           type="button"
-          onClick={() => setModalNovaEncomendaAberto(true)}
+          onClick={aoAbrirNovaEncomenda}
           className="rounded-full bg-[#3E2723] px-6 py-3 font-['Inter'] text-base font-semibold text-[#FFF8ED] shadow-sm transition-colors hover:bg-[#5D4037]"
         >
           + Nova encomenda
         </button>
       </header>
-
-      {/* Montado só quando aberto: cada abertura começa com estado limpo. */}
-      {modalNovaEncomendaAberto && (
-      <ModalNovaEncomenda
-        aoFechar={() => setModalNovaEncomendaAberto(false)}
-        aoCriar={(pedidoCriado) => {
-          setModalNovaEncomendaAberto(false);
-          setMensagemAcao({
-            tipo: "sucesso",
-            texto: `Encomenda de ${pedidoCriado.cliente} criada para ${formatarDataCurta(pedidoCriado.dataEntrega)}! 🎉`,
-          });
-          setVersaoDados((versao) => versao + 1); // pedido novo aparece na coluna do dia
-        }}
-      />
-      )}
 
       {/* ------- Navegação de semana (só cliques, zero digitação) ------- */}
       <div className="mb-6 flex flex-wrap items-center gap-2">
